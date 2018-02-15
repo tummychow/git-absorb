@@ -1,8 +1,13 @@
 #[macro_use]
 extern crate clap;
 extern crate git_absorb;
+#[macro_use]
+extern crate slog;
+extern crate slog_async;
+extern crate slog_term;
 
 use std::process;
+use slog::Drain;
 
 fn main() {
     let args = app_from_crate!()
@@ -29,14 +34,32 @@ fn main() {
                 .takes_value(false),
         )
         .get_matches();
-    println!("{:?}", args);
+
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    let drain = slog::LevelFilter::new(
+        drain,
+        if args.is_present("verbose") {
+            slog::Level::Debug
+        } else {
+            slog::Level::Warning
+        },
+    ).fuse();
+    let logger = slog::Logger::root(
+        drain,
+        o!(
+            "module" => slog::FnValue(|record| {record.module()}),
+            "line" => slog::FnValue(|record| {record.line()}),
+        ),
+    );
 
     if let Err(e) = git_absorb::run(&git_absorb::Config {
         dry_run: args.is_present("dry-run"),
         force: args.is_present("force"),
-        verbose: args.is_present("verbose"),
+        logger: &logger,
     }) {
-        eprintln!("error: {:?}", e);
+        crit!(logger, "absorb failed"; "err" => e.description());
         process::exit(1);
     }
 }

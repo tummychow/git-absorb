@@ -1,0 +1,6 @@
+[package]
+name = "git-absorb"
+version = "0.1.0"
+authors = ["tummychow <tummychow@users.noreply.github.com>"]
+
+[dependencies]

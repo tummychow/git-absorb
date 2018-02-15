@@ -5,3 +5,4 @@ authors = ["tummychow <tummychow@users.noreply.github.com>"]
 
 [dependencies]
 git2 = "~0.6"
+clap = "~2.30"

@@ -36,10 +36,10 @@ impl error::Error for Error {
     }
 }
 
-fn working_stack(
-    repo: &git2::Repository,
+fn working_stack<'repo>(
+    repo: &'repo git2::Repository,
     logger: &slog::Logger,
-) -> Result<Vec<git2::Oid>, Box<error::Error>> {
+) -> Result<Vec<git2::Commit<'repo>>, Box<error::Error>> {
     let head = repo.head()?;
     debug!(logger, "head found"; "head" => head.name());
 
@@ -69,9 +69,9 @@ fn working_stack(
 
     let mut ret = Vec::new();
     for rev in revwalk {
-        let rev = rev?;
-        ret.push(rev);
-        debug!(logger, "rev walked"; "rev" => format!("{}", rev));
+        let commit = repo.find_commit(rev?)?;
+        debug!(logger, "commit walked"; "commit" => format!("{}", commit.id()));
+        ret.push(commit);
     }
     Ok(ret)
 }
@@ -106,11 +106,13 @@ mod tests {
                 .unwrap(),
         ).unwrap();
         repo.branch("new", &head, false).unwrap();
-        let next = repo.commit(Some("HEAD"), &sig, &sig, "next", &tree, &[&head])
-            .unwrap();
+        let next = repo.find_commit(
+            repo.commit(Some("HEAD"), &sig, &sig, "next", &tree, &[&head])
+                .unwrap(),
+        ).unwrap();
 
         let stack = working_stack(&repo, &slog::Logger::root(slog::Discard, o!())).unwrap();
         assert_eq!(stack.len(), 1);
-        assert_eq!(stack[0], next);
+        assert_eq!(stack[0].id(), next.id());
     }
 }

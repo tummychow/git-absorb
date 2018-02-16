@@ -98,7 +98,7 @@ fn working_stack<'repo>(
     let sig = repo.signature()?;
     for rev in revwalk {
         let commit = repo.find_commit(rev?)?;
-        if commit.parents().count() > 1 {
+        if commit.parents().len() > 1 {
             debug!(logger, "merge commit found"; "commit" => commit.id().to_string());
             break;
         }

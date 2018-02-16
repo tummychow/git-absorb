@@ -25,15 +25,36 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         None => None,
     };
 
-    let stack = working_stack(&repo, base, config.logger)?;
+    let stack: Vec<_> = {
+        let stack = working_stack(&repo, base, config.logger)?;
+        let mut diffs = Vec::with_capacity(stack.len());
+        for commit in &stack {
+            let diff = owned::parse_diff(&repo.diff_tree_to_tree(
+                if commit.parents().len() == 0 {
+                    None
+                } else {
+                    Some(commit.parent(0)?.tree()?)
+                }.as_ref(),
+                Some(&commit.tree()?),
+                Some(&mut diff_options()),
+            )?)?;
+            debug!(config.logger, "parsed commit diff";
+                   "commit" => commit.id().to_string(),
+                   "diff" => format!("{:?}", diff),
+            );
+            diffs.push(diff);
+        }
 
-    let index = repo.diff_tree_to_index(
+        stack.into_iter().zip(diffs.into_iter()).collect()
+    };
+
+    let index = owned::parse_diff(&repo.diff_tree_to_index(
         Some(&repo.head()?.peel_to_tree()?),
         None,
         Some(&mut diff_options()),
-    )?;
+    )?)?;
     debug!(config.logger, "parsed index";
-           "index" => format!("{:?}", owned::parse_diff(&index)?),
+           "index" => format!("{:?}", index),
     );
 
     Ok(())

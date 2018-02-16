@@ -21,7 +21,7 @@ impl error::Error for Error {
     }
 }
 
-pub const MAX_STACK_CONFIG_NAME: &'static str = "absorb.maxStack";
+pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
 pub const MAX_STACK: usize = 10;
 
 pub struct Config<'a> {

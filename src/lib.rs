@@ -25,6 +25,15 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         None => None,
     };
 
+    let mut diff_options = Some({
+        let mut ret = git2::DiffOptions::new();
+        ret.context_lines(0)
+            .id_abbrev(40)
+            .ignore_filemode(true)
+            .ignore_submodules(true);
+        ret
+    });
+
     let stack: Vec<_> = {
         let stack = working_stack(&repo, base, config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
@@ -36,7 +45,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                     Some(commit.parent(0)?.tree()?)
                 }.as_ref(),
                 Some(&commit.tree()?),
-                Some(&mut diff_options()),
+                diff_options.as_mut(),
             )?)?;
             debug!(config.logger, "parsed commit diff";
                    "commit" => commit.id().to_string(),
@@ -51,22 +60,13 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let index = owned::parse_diff(&repo.diff_tree_to_index(
         Some(&repo.head()?.peel_to_tree()?),
         None,
-        Some(&mut diff_options()),
+        diff_options.as_mut(),
     )?)?;
     debug!(config.logger, "parsed index";
            "index" => format!("{:?}", index),
     );
 
     Ok(())
-}
-
-fn diff_options() -> git2::DiffOptions {
-    let mut ret = git2::DiffOptions::new();
-    ret.context_lines(0)
-        .id_abbrev(40)
-        .ignore_filemode(true)
-        .ignore_submodules(true);
-    ret
 }
 
 fn max_stack(repo: &git2::Repository) -> usize {

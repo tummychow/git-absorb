@@ -74,7 +74,7 @@ fn working_stack<'repo>(
 
     if let Some(base_commit) = custom_base {
         revwalk.hide(base_commit.id())?;
-        debug!(logger, "commit hidden"; "commit" => format!("{}", base_commit.id()));
+        debug!(logger, "commit hidden"; "commit" => base_commit.id().to_string());
     } else {
         for branch in repo.branches(Some(git2::BranchType::Local))? {
             let (branch, _) = branch?;
@@ -96,14 +96,14 @@ fn working_stack<'repo>(
     for rev in revwalk {
         let commit = repo.find_commit(rev?)?;
         if commit.parents().count() > 1 {
-            debug!(logger, "merge commit found"; "commit" => format!("{}", commit.id()));
+            debug!(logger, "merge commit found"; "commit" => commit.id().to_string());
             break;
         }
         if ret.len() == max_stack(repo) {
             warn!(logger, "stack limit reached"; "limit" => ret.len());
             break;
         }
-        debug!(logger, "commit pushed onto stack"; "commit" => format!("{}", commit.id()));
+        debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
         ret.push(commit);
     }
     Ok(ret)

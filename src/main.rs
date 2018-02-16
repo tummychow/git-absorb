@@ -67,7 +67,7 @@ fn main() {
         base: args.value_of("base"),
         logger: &logger,
     }) {
-        crit!(logger, "absorb failed"; "err" => e.description());
+        crit!(logger, "absorb failed"; "err" => e.to_string());
         // wait for async logger to finish writing messages
         drop(logger);
         process::exit(1);

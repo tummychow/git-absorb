@@ -1,25 +1,7 @@
+extern crate failure;
 extern crate git2;
 #[macro_use]
 extern crate slog;
-
-use std::error;
-use std::fmt;
-
-#[derive(Debug)]
-pub struct Error(String);
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        &self.0
-    }
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
 
 pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
 pub const MAX_STACK: usize = 10;
@@ -31,7 +13,7 @@ pub struct Config<'a> {
     pub logger: &'a slog::Logger,
 }
 
-pub fn run(config: &Config) -> Result<(), Box<error::Error>> {
+pub fn run(config: &Config) -> Result<(), failure::Error> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
@@ -59,12 +41,12 @@ fn working_stack<'repo>(
     repo: &'repo git2::Repository,
     custom_base: Option<git2::Commit<'repo>>,
     logger: &slog::Logger,
-) -> Result<Vec<git2::Commit<'repo>>, Box<error::Error>> {
+) -> Result<Vec<git2::Commit<'repo>>, failure::Error> {
     let head = repo.head()?;
     debug!(logger, "head found"; "head" => head.name());
 
     if !head.is_branch() {
-        return Err(Box::new(Error(String::from("HEAD is not a branch"))));
+        return Err(failure::err_msg("HEAD is not a branch"));
     }
 
     let mut revwalk = repo.revwalk()?;

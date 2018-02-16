@@ -93,10 +93,17 @@ fn working_stack<'repo>(
     }
 
     let mut ret = Vec::new();
+    let sig = repo.signature()?;
     for rev in revwalk {
         let commit = repo.find_commit(rev?)?;
         if commit.parents().count() > 1 {
             debug!(logger, "merge commit found"; "commit" => commit.id().to_string());
+            break;
+        }
+        if commit.author().name_bytes() != sig.name_bytes()
+            || commit.author().email_bytes() != sig.email_bytes()
+        {
+            debug!(logger, "foreign author found"; "commit" => commit.id().to_string());
             break;
         }
         if ret.len() == max_stack(repo) {
@@ -124,6 +131,11 @@ mod tests {
         let dir = tempdir::TempDir::new("git-absorb").unwrap();
         // TODO: use in-memory ODB instead (blocked on git2 support)
         let repo = git2::Repository::init(&dir).unwrap();
+
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "nobody").unwrap();
+        config.set_str("user.email", "nobody@example.com").unwrap();
+
         (dir, repo)
     }
 
@@ -133,7 +145,7 @@ mod tests {
         message: &str,
         parents: &[&git2::Commit],
     ) -> git2::Commit<'repo> {
-        let sig = git2::Signature::now("nobody", "nobody@example.com").unwrap();
+        let sig = repo.signature().unwrap();
         let tree = repo.find_tree(repo.treebuilder(None).unwrap().write().unwrap())
             .unwrap();
 
@@ -215,6 +227,22 @@ mod tests {
         for (orig_commit, stack_commit) in commits.iter().rev().take(MAX_STACK + 1).zip(stack) {
             assert_eq!(stack_commit.id(), orig_commit.id());
         }
+    }
+
+    #[test]
+    fn test_stack_stops_at_foreign_author() {
+        let (_dir, repo) = init_repo();
+        let old_commits = empty_commit_chain(&repo, "HEAD", &[], 3);
+        repo.config()
+            .unwrap()
+            .set_str("user.name", "nobody2")
+            .unwrap();
+        let new_commits = empty_commit_chain(&repo, "HEAD", &[old_commits.last().unwrap()], 2);
+
+        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack[0].id(), new_commits[1].id());
+        assert_eq!(stack[1].id(), new_commits[0].id());
     }
 
     #[test]

@@ -70,7 +70,11 @@ fn working_stack<'repo>(
     let mut ret = Vec::new();
     for rev in revwalk {
         let commit = repo.find_commit(rev?)?;
-        debug!(logger, "commit walked"; "commit" => format!("{}", commit.id()));
+        if commit.parents().count() > 1 {
+            debug!(logger, "merge commit found"; "commit" => format!("{}", commit.id()));
+            break;
+        }
+        debug!(logger, "commit pushed onto stack"; "commit" => format!("{}", commit.id()));
         ret.push(commit);
     }
     Ok(ret)
@@ -82,37 +86,58 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_run() {
-        run(&Config {
-            dry_run: false,
-            force: false,
-            logger: &slog::Logger::root(slog::Discard, o!()),
-        }).unwrap();
+    fn empty_slog() -> slog::Logger {
+        slog::Logger::root(slog::Discard, o!())
+    }
+
+    fn init_repo() -> (tempdir::TempDir, git2::Repository) {
+        // the repo will be deleted when the tempdir gets dropped
+        let dir = tempdir::TempDir::new("git-absorb").unwrap();
+        let repo = git2::Repository::init(&dir).unwrap();
+        (dir, repo)
+    }
+
+    fn empty_commit<'repo>(
+        repo: &'repo git2::Repository,
+        update_ref: &str,
+        message: &str,
+        parents: &[&git2::Commit],
+    ) -> git2::Commit<'repo> {
+        let sig = git2::Signature::now("nobody", "nobody@example.com").unwrap();
+        let tree = repo.find_tree(repo.treebuilder(None).unwrap().write().unwrap())
+            .unwrap();
+
+        repo.find_commit(
+            repo.commit(Some(update_ref), &sig, &sig, message, &tree, parents)
+                .unwrap(),
+        ).unwrap()
     }
 
     #[test]
-    fn test_stack() {
-        let dir = tempdir::TempDir::new("git-absorb").unwrap();
-        let repo = git2::Repository::init(&dir).unwrap();
-        let sig = repo.signature().unwrap();
-        let tree = {
-            let mut index = repo.index().unwrap();
-            let id = index.write_tree().unwrap();
-            repo.find_tree(id).unwrap()
-        };
-        let head = repo.find_commit(
-            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-                .unwrap(),
-        ).unwrap();
-        repo.branch("new", &head, false).unwrap();
-        let next = repo.find_commit(
-            repo.commit(Some("HEAD"), &sig, &sig, "next", &tree, &[&head])
-                .unwrap(),
-        ).unwrap();
+    fn test_stack_hides_other_branches() {
+        let (_dir, repo) = init_repo();
+        let first = empty_commit(&repo, "HEAD", "first", &[]);
+        let second = empty_commit(&repo, "HEAD", "second", &[&first]);
+        repo.branch("hide", &first, false).unwrap();
 
-        let stack = working_stack(&repo, &slog::Logger::root(slog::Discard, o!())).unwrap();
+        let stack = working_stack(&repo, &empty_slog()).unwrap();
         assert_eq!(stack.len(), 1);
-        assert_eq!(stack[0].id(), next.id());
+        assert_eq!(stack[0].id(), second.id());
+    }
+
+    #[test]
+    fn test_stack_stops_at_merges() {
+        let (_dir, repo) = init_repo();
+        let first = empty_commit(&repo, "HEAD", "first", &[]);
+        // equivalent to checkout --orphan
+        repo.set_head("refs/heads/new").unwrap();
+        let second = empty_commit(&repo, "HEAD", "second", &[]);
+        // the current commit must be the first parent
+        let merge = empty_commit(&repo, "HEAD", "merge", &[&second, &first]);
+        let last = empty_commit(&repo, "HEAD", "last", &[&merge]);
+
+        let stack = working_stack(&repo, &empty_slog()).unwrap();
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0].id(), last.id());
     }
 }

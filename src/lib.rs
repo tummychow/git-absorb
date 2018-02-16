@@ -122,6 +122,7 @@ mod tests {
     fn init_repo() -> (tempdir::TempDir, git2::Repository) {
         // the repo will be deleted when the tempdir gets dropped
         let dir = tempdir::TempDir::new("git-absorb").unwrap();
+        // TODO: use in-memory ODB instead (blocked on git2 support)
         let repo = git2::Repository::init(&dir).unwrap();
         (dir, repo)
     }

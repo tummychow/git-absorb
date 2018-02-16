@@ -60,6 +60,8 @@ fn main() {
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.description());
+        // wait for async logger to finish writing messages
+        drop(logger);
         process::exit(1);
     }
 }

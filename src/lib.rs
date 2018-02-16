@@ -21,6 +21,9 @@ impl error::Error for Error {
     }
 }
 
+pub const MAX_STACK_CONFIG_NAME: &'static str = "absorb.maxStack";
+pub const MAX_STACK: usize = 10;
+
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force: bool,
@@ -41,6 +44,15 @@ pub fn run(config: &Config) -> Result<(), Box<error::Error>> {
     working_stack(&repo, base, config.logger)?;
 
     Ok(())
+}
+
+fn max_stack(repo: &git2::Repository) -> usize {
+    match repo.config()
+        .and_then(|config| config.get_i64(MAX_STACK_CONFIG_NAME))
+    {
+        Ok(max_stack) if max_stack > 0 => max_stack as usize,
+        _ => MAX_STACK,
+    }
 }
 
 fn working_stack<'repo>(
@@ -85,6 +97,10 @@ fn working_stack<'repo>(
         let commit = repo.find_commit(rev?)?;
         if commit.parents().count() > 1 {
             debug!(logger, "merge commit found"; "commit" => format!("{}", commit.id()));
+            break;
+        }
+        if ret.len() == max_stack(repo) {
+            warn!(logger, "stack limit reached"; "limit" => ret.len());
             break;
         }
         debug!(logger, "commit pushed onto stack"; "commit" => format!("{}", commit.id()));
@@ -170,6 +186,34 @@ mod tests {
         assert_eq!(stack.len(), 2);
         assert_eq!(stack[0].id(), commits[2].id());
         assert_eq!(stack[1].id(), commits[1].id());
+    }
+
+    #[test]
+    fn test_stack_stops_at_default_limit() {
+        let (_dir, repo) = init_repo();
+        let commits = empty_commit_chain(&repo, "HEAD", &[], MAX_STACK + 1);
+
+        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
+        assert_eq!(stack.len(), MAX_STACK);
+        for (orig_commit, stack_commit) in commits.iter().rev().take(MAX_STACK).zip(stack) {
+            assert_eq!(stack_commit.id(), orig_commit.id());
+        }
+    }
+
+    #[test]
+    fn test_stack_stops_at_configured_limit() {
+        let (_dir, repo) = init_repo();
+        let commits = empty_commit_chain(&repo, "HEAD", &[], MAX_STACK + 2);
+        repo.config()
+            .unwrap()
+            .set_i64(MAX_STACK_CONFIG_NAME, (MAX_STACK + 1) as i64)
+            .unwrap();
+
+        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
+        assert_eq!(stack.len(), MAX_STACK + 1);
+        for (orig_commit, stack_commit) in commits.iter().rev().take(MAX_STACK + 1).zip(stack) {
+            assert_eq!(stack_commit.id(), orig_commit.id());
+        }
     }
 
     #[test]

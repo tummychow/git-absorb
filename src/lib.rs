@@ -5,6 +5,22 @@ extern crate slog;
 use std::error;
 use std::fmt;
 
+#[derive(Debug)]
+pub struct Error(String);
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        &self.0
+    }
+    fn cause(&self) -> Option<&error::Error> {
+        None
+    }
+}
+
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force: bool,
@@ -25,22 +41,6 @@ pub fn run(config: &Config) -> Result<(), Box<error::Error>> {
     working_stack(&repo, base, config.logger)?;
 
     Ok(())
-}
-
-#[derive(Debug)]
-pub struct Error(String);
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        &self.0
-    }
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
 }
 
 fn working_stack<'repo>(

@@ -120,13 +120,13 @@ fn working_stack<'repo>(
     for rev in revwalk {
         let commit = repo.find_commit(rev?)?;
         if commit.parents().len() > 1 {
-            debug!(logger, "merge commit found"; "commit" => commit.id().to_string());
+            warn!(logger, "merge commit found"; "commit" => commit.id().to_string());
             break;
         }
         if commit.author().name_bytes() != sig.name_bytes()
             || commit.author().email_bytes() != sig.email_bytes()
         {
-            debug!(logger, "foreign author found"; "commit" => commit.id().to_string());
+            warn!(logger, "foreign author found"; "commit" => commit.id().to_string());
             break;
         }
         if ret.len() == max_stack(repo) {

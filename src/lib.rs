@@ -35,7 +35,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     });
 
     let stack: Vec<_> = {
-        let stack = working_stack(&repo, base, config.logger)?;
+        let stack = working_stack(&repo, base.as_ref(), config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
         for commit in &stack {
             let diff = owned::parse_diff(&repo.diff_tree_to_tree(
@@ -80,7 +80,7 @@ fn max_stack(repo: &git2::Repository) -> usize {
 
 fn working_stack<'repo>(
     repo: &'repo git2::Repository,
-    custom_base: Option<git2::Commit<'repo>>,
+    custom_base: Option<&git2::Commit<'repo>>,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>, failure::Error> {
     let head = repo.head()?;
@@ -226,10 +226,9 @@ mod tests {
         let commits = empty_commit_chain(&repo, "HEAD", &[], 3);
         repo.branch("hide", &commits[1], false).unwrap();
 
-        // TODO: working_stack should take Option<&Commit>, to remove this clone()
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, Some(commits[0].clone()), &empty_slog()).unwrap(),
+            &working_stack(&repo, Some(&commits[0]), &empty_slog()).unwrap(),
             &commits,
         );
     }

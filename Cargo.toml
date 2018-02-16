@@ -9,3 +9,6 @@ clap = "~2.30"
 slog = "~2.1"
 slog-term = "~2.3"
 slog-async = "~2.2"
+
+[dev-dependencies]
+tempdir = "~0.3"

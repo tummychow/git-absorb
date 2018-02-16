@@ -78,16 +78,39 @@ fn working_stack(
 
 #[cfg(test)]
 mod tests {
+    extern crate tempdir;
+
     use super::*;
 
     #[test]
     fn test_run() {
-        assert!(
-            run(&Config {
-                dry_run: false,
-                force: false,
-                logger: &slog::Logger::root(slog::Discard, o!()),
-            }).is_ok()
-        );
+        run(&Config {
+            dry_run: false,
+            force: false,
+            logger: &slog::Logger::root(slog::Discard, o!()),
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_stack() {
+        let dir = tempdir::TempDir::new("git-absorb").unwrap();
+        let repo = git2::Repository::init(&dir).unwrap();
+        let sig = repo.signature().unwrap();
+        let tree = {
+            let mut index = repo.index().unwrap();
+            let id = index.write_tree().unwrap();
+            repo.find_tree(id).unwrap()
+        };
+        let head = repo.find_commit(
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap(),
+        ).unwrap();
+        repo.branch("new", &head, false).unwrap();
+        let next = repo.commit(Some("HEAD"), &sig, &sig, "next", &tree, &[&head])
+            .unwrap();
+
+        let stack = working_stack(&repo, &slog::Logger::root(slog::Discard, o!())).unwrap();
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0], next);
     }
 }

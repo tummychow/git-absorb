@@ -8,6 +8,7 @@ use std::fmt;
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force: bool,
+    pub base: Option<&'a str>,
     pub logger: &'a slog::Logger,
 }
 
@@ -15,7 +16,13 @@ pub fn run(config: &Config) -> Result<(), Box<error::Error>> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
-    working_stack(&repo, config.logger)?;
+    let base = match config.base {
+        // https://github.com/rust-lang/rfcs/issues/1815
+        Some(commitish) => Some(repo.find_commit(repo.revparse_single(commitish)?.id())?),
+        None => None,
+    };
+
+    working_stack(&repo, base, config.logger)?;
 
     Ok(())
 }
@@ -38,6 +45,7 @@ impl error::Error for Error {
 
 fn working_stack<'repo>(
     repo: &'repo git2::Repository,
+    custom_base: Option<git2::Commit<'repo>>,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>, Box<error::Error>> {
     let head = repo.head()?;
@@ -52,19 +60,24 @@ fn working_stack<'repo>(
     revwalk.push_head()?;
     debug!(logger, "head pushed"; "head" => head.name());
 
-    for branch in repo.branches(Some(git2::BranchType::Local))? {
-        let (branch, _) = branch?;
-        let branch = branch.get().name();
+    if let Some(base_commit) = custom_base {
+        revwalk.hide(base_commit.id())?;
+        debug!(logger, "commit hidden"; "commit" => format!("{}", base_commit.id()));
+    } else {
+        for branch in repo.branches(Some(git2::BranchType::Local))? {
+            let (branch, _) = branch?;
+            let branch = branch.get().name();
 
-        match branch {
-            Some(name) if Some(name) != head.name() => {
-                revwalk.hide_ref(name)?;
-                debug!(logger, "branch hidden"; "branch" => branch);
-            }
-            _ => {
-                debug!(logger, "branch not hidden"; "branch" => branch);
-            }
-        };
+            match branch {
+                Some(name) if Some(name) != head.name() => {
+                    revwalk.hide_ref(name)?;
+                    debug!(logger, "branch hidden"; "branch" => branch);
+                }
+                _ => {
+                    debug!(logger, "branch not hidden"; "branch" => branch);
+                }
+            };
+        }
     }
 
     let mut ret = Vec::new();
@@ -120,9 +133,23 @@ mod tests {
         let second = empty_commit(&repo, "HEAD", "second", &[&first]);
         repo.branch("hide", &first, false).unwrap();
 
-        let stack = working_stack(&repo, &empty_slog()).unwrap();
+        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
         assert_eq!(stack.len(), 1);
         assert_eq!(stack[0].id(), second.id());
+    }
+
+    #[test]
+    fn test_stack_uses_custom_base() {
+        let (_dir, repo) = init_repo();
+        let first = empty_commit(&repo, "HEAD", "first", &[]);
+        let second = empty_commit(&repo, "HEAD", "second", &[&first]);
+        let third = empty_commit(&repo, "HEAD", "third", &[&second]);
+        repo.branch("hide", &second, false).unwrap();
+
+        let stack = working_stack(&repo, Some(first), &empty_slog()).unwrap();
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack[0].id(), third.id());
+        assert_eq!(stack[1].id(), second.id());
     }
 
     #[test]
@@ -136,7 +163,7 @@ mod tests {
         let merge = empty_commit(&repo, "HEAD", "merge", &[&second, &first]);
         let last = empty_commit(&repo, "HEAD", "last", &[&merge]);
 
-        let stack = working_stack(&repo, &empty_slog()).unwrap();
+        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
         assert_eq!(stack.len(), 1);
         assert_eq!(stack[0].id(), last.id());
     }

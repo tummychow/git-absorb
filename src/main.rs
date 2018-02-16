@@ -13,6 +13,13 @@ fn main() {
     let args = app_from_crate!()
         .about("Automatically absorb staged changes into your current branch")
         .arg(
+            clap::Arg::with_name("base")
+                .help("Use this commit as the base of the absorb stack")
+                .short("b")
+                .long("base")
+                .takes_value(true),
+        )
+        .arg(
             clap::Arg::with_name("dry-run")
                 .help("Don't make any actual changes")
                 .short("n")
@@ -57,6 +64,7 @@ fn main() {
     if let Err(e) = git_absorb::run(&git_absorb::Config {
         dry_run: args.is_present("dry-run"),
         force: args.is_present("force"),
+        base: args.value_of("base"),
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.description());

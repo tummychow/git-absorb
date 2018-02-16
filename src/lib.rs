@@ -126,30 +126,50 @@ mod tests {
         ).unwrap()
     }
 
+    fn empty_commit_chain<'repo>(
+        repo: &'repo git2::Repository,
+        update_ref: &str,
+        initial_parents: &[&git2::Commit],
+        length: usize,
+    ) -> Vec<git2::Commit<'repo>> {
+        let mut ret = Vec::with_capacity(length);
+
+        for idx in 0..length {
+            let next = if let Some(last) = ret.last() {
+                // TODO: how to deduplicate the rest of this call if last doesn't live long enough?
+                empty_commit(repo, update_ref, &idx.to_string(), &[last])
+            } else {
+                empty_commit(repo, update_ref, &idx.to_string(), initial_parents)
+            };
+            ret.push(next)
+        }
+
+        assert_eq!(ret.len(), length);
+        ret
+    }
+
     #[test]
     fn test_stack_hides_other_branches() {
         let (_dir, repo) = init_repo();
-        let first = empty_commit(&repo, "HEAD", "first", &[]);
-        let second = empty_commit(&repo, "HEAD", "second", &[&first]);
-        repo.branch("hide", &first, false).unwrap();
+        let commits = empty_commit_chain(&repo, "HEAD", &[], 2);
+        repo.branch("hide", &commits[0], false).unwrap();
 
         let stack = working_stack(&repo, None, &empty_slog()).unwrap();
         assert_eq!(stack.len(), 1);
-        assert_eq!(stack[0].id(), second.id());
+        assert_eq!(stack[0].id(), commits[1].id());
     }
 
     #[test]
     fn test_stack_uses_custom_base() {
         let (_dir, repo) = init_repo();
-        let first = empty_commit(&repo, "HEAD", "first", &[]);
-        let second = empty_commit(&repo, "HEAD", "second", &[&first]);
-        let third = empty_commit(&repo, "HEAD", "third", &[&second]);
-        repo.branch("hide", &second, false).unwrap();
+        let commits = empty_commit_chain(&repo, "HEAD", &[], 3);
+        repo.branch("hide", &commits[1], false).unwrap();
 
-        let stack = working_stack(&repo, Some(first), &empty_slog()).unwrap();
+        // TODO: working_stack should take Option<&Commit>, to remove this clone()
+        let stack = working_stack(&repo, Some(commits[0].clone()), &empty_slog()).unwrap();
         assert_eq!(stack.len(), 2);
-        assert_eq!(stack[0].id(), third.id());
-        assert_eq!(stack[1].id(), second.id());
+        assert_eq!(stack[0].id(), commits[2].id());
+        assert_eq!(stack[1].id(), commits[1].id());
     }
 
     #[test]

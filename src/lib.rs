@@ -177,15 +177,24 @@ mod tests {
         ret
     }
 
+    fn assert_stack_matches_chain(length: usize, stack: &[git2::Commit], chain: &[git2::Commit]) {
+        assert_eq!(stack.len(), length);
+        for (chain_commit, stack_commit) in chain.iter().rev().take(length).zip(stack) {
+            assert_eq!(stack_commit.id(), chain_commit.id());
+        }
+    }
+
     #[test]
     fn test_stack_hides_other_branches() {
         let (_dir, repo) = init_repo();
         let commits = empty_commit_chain(&repo, "HEAD", &[], 2);
         repo.branch("hide", &commits[0], false).unwrap();
 
-        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
-        assert_eq!(stack.len(), 1);
-        assert_eq!(stack[0].id(), commits[1].id());
+        assert_stack_matches_chain(
+            1,
+            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &commits,
+        );
     }
 
     #[test]
@@ -195,10 +204,11 @@ mod tests {
         repo.branch("hide", &commits[1], false).unwrap();
 
         // TODO: working_stack should take Option<&Commit>, to remove this clone()
-        let stack = working_stack(&repo, Some(commits[0].clone()), &empty_slog()).unwrap();
-        assert_eq!(stack.len(), 2);
-        assert_eq!(stack[0].id(), commits[2].id());
-        assert_eq!(stack[1].id(), commits[1].id());
+        assert_stack_matches_chain(
+            2,
+            &working_stack(&repo, Some(commits[0].clone()), &empty_slog()).unwrap(),
+            &commits,
+        );
     }
 
     #[test]
@@ -206,11 +216,11 @@ mod tests {
         let (_dir, repo) = init_repo();
         let commits = empty_commit_chain(&repo, "HEAD", &[], MAX_STACK + 1);
 
-        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
-        assert_eq!(stack.len(), MAX_STACK);
-        for (orig_commit, stack_commit) in commits.iter().rev().take(MAX_STACK).zip(stack) {
-            assert_eq!(stack_commit.id(), orig_commit.id());
-        }
+        assert_stack_matches_chain(
+            MAX_STACK,
+            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &commits,
+        );
     }
 
     #[test]
@@ -222,11 +232,11 @@ mod tests {
             .set_i64(MAX_STACK_CONFIG_NAME, (MAX_STACK + 1) as i64)
             .unwrap();
 
-        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
-        assert_eq!(stack.len(), MAX_STACK + 1);
-        for (orig_commit, stack_commit) in commits.iter().rev().take(MAX_STACK + 1).zip(stack) {
-            assert_eq!(stack_commit.id(), orig_commit.id());
-        }
+        assert_stack_matches_chain(
+            MAX_STACK + 1,
+            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &commits,
+        );
     }
 
     #[test]
@@ -239,10 +249,11 @@ mod tests {
             .unwrap();
         let new_commits = empty_commit_chain(&repo, "HEAD", &[old_commits.last().unwrap()], 2);
 
-        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
-        assert_eq!(stack.len(), 2);
-        assert_eq!(stack[0].id(), new_commits[1].id());
-        assert_eq!(stack[1].id(), new_commits[0].id());
+        assert_stack_matches_chain(
+            2,
+            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &new_commits,
+        );
     }
 
     #[test]
@@ -254,10 +265,12 @@ mod tests {
         let second = empty_commit(&repo, "HEAD", "second", &[]);
         // the current commit must be the first parent
         let merge = empty_commit(&repo, "HEAD", "merge", &[&second, &first]);
-        let last = empty_commit(&repo, "HEAD", "last", &[&merge]);
+        let commits = empty_commit_chain(&repo, "HEAD", &[&merge], 2);
 
-        let stack = working_stack(&repo, None, &empty_slog()).unwrap();
-        assert_eq!(stack.len(), 1);
-        assert_eq!(stack[0].id(), last.id());
+        assert_stack_matches_chain(
+            2,
+            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &commits,
+        );
     }
 }

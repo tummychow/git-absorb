@@ -1,41 +1,37 @@
 extern crate failure;
 extern crate git2;
 
-pub fn parse_diff(diff: &git2::Diff) -> Result<Vec<OwnedPatch>, failure::Error> {
+pub fn parse_diff(diff: &git2::Diff) -> Result<Vec<Patch>, failure::Error> {
     let mut ret = Vec::new();
     for (delta_idx, _delta) in diff.deltas().enumerate() {
-        ret.push(OwnedPatch::new(&mut git2::Patch::from_diff(
-            diff,
-            delta_idx,
-        )?.ok_or_else(|| {
-            failure::err_msg("got empty delta")
-        })?)?);
+        ret.push(Patch::new(&mut git2::Patch::from_diff(diff, delta_idx)?
+            .ok_or_else(|| failure::err_msg("got empty delta"))?)?);
     }
     Ok(ret)
 }
 
 #[derive(Debug)]
-pub struct OwnedBlock {
+pub struct Block {
     pub start: u32,
     pub lines: Vec<Vec<u8>>,
     pub trailing_newline: bool,
 }
 #[derive(Debug)]
-pub struct OwnedHunk {
-    added: OwnedBlock,
-    removed: OwnedBlock,
+pub struct Hunk {
+    pub added: Block,
+    pub removed: Block,
 }
-impl OwnedHunk {
-    pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<OwnedHunk, failure::Error> {
+impl Hunk {
+    pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<Hunk, failure::Error> {
         let mut ret = {
             let (hunk, _size) = patch.hunk(idx)?;
-            OwnedHunk {
-                added: OwnedBlock {
+            Hunk {
+                added: Block {
                     start: hunk.new_start(),
                     lines: Vec::with_capacity(hunk.new_lines() as usize),
                     trailing_newline: true,
                 },
-                removed: OwnedBlock {
+                removed: Block {
                     start: hunk.old_start(),
                     lines: Vec::with_capacity(hunk.old_lines() as usize),
                     trailing_newline: true,
@@ -108,17 +104,17 @@ impl OwnedHunk {
 }
 
 #[derive(Debug)]
-pub struct OwnedPatch {
-    old_path: Option<Vec<u8>>,
-    old_id: git2::Oid,
-    new_path: Option<Vec<u8>>,
-    new_id: git2::Oid,
-    status: git2::Delta,
-    hunks: Vec<OwnedHunk>,
+pub struct Patch {
+    pub old_path: Option<Vec<u8>>,
+    pub old_id: git2::Oid,
+    pub new_path: Option<Vec<u8>>,
+    pub new_id: git2::Oid,
+    pub status: git2::Delta,
+    pub hunks: Vec<Hunk>,
 }
-impl OwnedPatch {
-    pub fn new(patch: &mut git2::Patch) -> Result<OwnedPatch, failure::Error> {
-        let mut ret = OwnedPatch {
+impl Patch {
+    pub fn new(patch: &mut git2::Patch) -> Result<Patch, failure::Error> {
+        let mut ret = Patch {
             old_path: patch.delta().old_file().path_bytes().map(Vec::from),
             old_id: patch.delta().old_file().id(),
             new_path: patch.delta().new_file().path_bytes().map(Vec::from),
@@ -131,7 +127,7 @@ impl OwnedPatch {
         }
 
         for idx in 0..patch.num_hunks() {
-            ret.hunks.push(OwnedHunk::new(patch, idx)?);
+            ret.hunks.push(Hunk::new(patch, idx)?);
         }
 
         Ok(ret)

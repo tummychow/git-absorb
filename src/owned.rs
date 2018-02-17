@@ -12,7 +12,7 @@ pub fn parse_diff(diff: &git2::Diff) -> Result<Vec<Patch>, failure::Error> {
 
 #[derive(Debug)]
 pub struct Block {
-    pub start: u32,
+    pub start: usize,
     pub lines: Vec<Vec<u8>>,
     pub trailing_newline: bool,
 }
@@ -27,12 +27,12 @@ impl Hunk {
             let (hunk, _size) = patch.hunk(idx)?;
             Hunk {
                 added: Block {
-                    start: hunk.new_start(),
+                    start: hunk.new_start() as usize,
                     lines: Vec::with_capacity(hunk.new_lines() as usize),
                     trailing_newline: true,
                 },
                 removed: Block {
-                    start: hunk.old_start(),
+                    start: hunk.old_start() as usize,
                     lines: Vec::with_capacity(hunk.old_lines() as usize),
                     trailing_newline: true,
                 },
@@ -48,7 +48,7 @@ impl Hunk {
                     }
                     if line.new_lineno()
                         .ok_or_else(|| failure::err_msg("added line did not have lineno"))?
-                        != ret.added.start + ret.added.lines.len() as u32
+                        as usize != ret.added.start + ret.added.lines.len()
                     {
                         return Err(failure::err_msg("added line did not reach expected lineno"));
                     }
@@ -60,7 +60,8 @@ impl Hunk {
                     }
                     if line.old_lineno()
                         .ok_or_else(|| failure::err_msg("removed line did not have lineno"))?
-                        != ret.removed.start + ret.removed.lines.len() as u32
+                        as usize
+                        != ret.removed.start + ret.removed.lines.len()
                     {
                         return Err(failure::err_msg(
                             "removed line did not reach expected lineno",

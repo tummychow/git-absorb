@@ -5,6 +5,7 @@ extern crate slog;
 
 mod owned;
 mod stack;
+mod commute;
 
 pub struct Config<'a> {
     pub dry_run: bool,
@@ -65,44 +66,4 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     );
 
     Ok(())
-}
-
-fn overlap(above: &owned::Block, below: &owned::Block) -> bool {
-    !above.lines.is_empty() && !below.lines.is_empty()
-        && below.start - above.start - above.lines.len() == 0
-}
-
-fn commute(
-    first: owned::Hunk,
-    second: owned::Hunk,
-) -> Result<(bool, owned::Hunk, owned::Hunk), failure::Error> {
-    // represent hunks in content order rather than application order
-    let (first_above, above, mut below) = match (
-        first.added.start <= second.added.start,
-        first.removed.start <= second.removed.start,
-    ) {
-        (true, true) => (true, first, second),
-        (false, false) => (false, second, first),
-        _ => return Err(failure::err_msg("nonsensical hunk ordering")),
-    };
-
-    // if the hunks overlap on either side, they can't commute, so return them in original order
-    if overlap(&above.added, &below.added) || overlap(&above.removed, &below.removed) {
-        return Ok(if first_above {
-            (false, above, below)
-        } else {
-            (false, below, above)
-        });
-    }
-
-    let above_change_offset = (above.added.lines.len() as i64 - above.removed.lines.len() as i64)
-        * if first_above { -1 } else { 1 };
-    below.added.start = (below.added.start as i64 + above_change_offset) as usize;
-    below.removed.start = (below.removed.start as i64 + above_change_offset) as usize;
-
-    Ok(if first_above {
-        (true, below, above)
-    } else {
-        (true, above, below)
-    })
 }

@@ -57,44 +57,39 @@ fn commute(
     first: &owned::Hunk,
     second: &owned::Hunk,
 ) -> Result<Option<(owned::Hunk, owned::Hunk)>, failure::Error> {
-    // represent hunks in content order rather than application order
-    let (first_above, above, below) = match (
-        // TODO: skip any comparisons against empty blocks
-        first.added.start <= second.added.start,
-        first.removed.start <= second.removed.start,
-    ) {
-        (true, true) => (true, first, second),
-        (false, false) => (false, second, first),
-        _ => return Err(failure::err_msg("nonsensical hunk ordering")),
-    };
+    let (_, _, first_upper, first_lower) = anchors(first);
+    let (second_upper, second_lower, _, _) = anchors(second);
 
-    // if both hunks are exclusively adding or removing, and both
-    // hunks are composed entirely of the same line being repeated,
-    // then they commute no matter what their offsets are, because
-    // they can be interleaved in any order without changing the final
-    // result
-    let interleavable = {
-        if above.added.lines.is_empty() && below.added.lines.is_empty() {
-            uniform(above.removed.lines.iter().chain(&*below.removed.lines))
-        } else if above.removed.lines.is_empty() && below.removed.lines.is_empty() {
-            uniform(above.added.lines.iter().chain(&*below.added.lines))
+    // represent hunks in content order rather than application order
+    let (first_above, above, below) = {
+        if first_lower <= second_upper {
+            (true, first, second)
+        } else if second_lower <= first_upper {
+            (false, second, first)
         } else {
-            false
+            // if both hunks are exclusively adding or removing, and
+            // both hunks are composed entirely of the same line being
+            // repeated, then they commute no matter what their
+            // offsets are, because they can be interleaved in any
+            // order without changing the final result
+            if first.added.lines.is_empty() && second.added.lines.is_empty()
+                && uniform(first.removed.lines.iter().chain(&*second.removed.lines))
+            {
+                // TODO: removed start positions probably need to be
+                // tweaked here
+                return Ok(Some((second.clone(), first.clone())));
+            } else if first.removed.lines.is_empty() && second.removed.lines.is_empty()
+                && uniform(first.added.lines.iter().chain(&*second.added.lines))
+            {
+                // TODO: added start positions probably need to be
+                // tweaked here
+                return Ok(Some((second.clone(), first.clone())));
+            }
+            // these hunks overlap and cannot be interleaved, so they
+            // do not commute
+            return Ok(None);
         }
     };
-    // there has to be at least one unchanged line between the two
-    // hunks on the first hunk's added side, and the second hunk's
-    // removed side
-    let (above_anchor, below_anchor) = if first_above {
-        (anchors(above).3, anchors(below).0)
-    } else {
-        (anchors(above).1, anchors(below).2)
-    };
-    // the hunks overlap and are not interleavable, so they cannot
-    // commute
-    if above_anchor > below_anchor && !interleavable {
-        return Ok(None);
-    }
 
     let above = above.clone();
     let mut below = below.clone();

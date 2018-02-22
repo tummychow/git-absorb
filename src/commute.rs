@@ -37,11 +37,11 @@ fn anchors(hunk: &owned::Hunk) -> (usize, usize, usize, usize) {
 }
 
 fn commute(
-    first: owned::Hunk,
-    second: owned::Hunk,
-) -> Result<(bool, owned::Hunk, owned::Hunk), failure::Error> {
+    first: &owned::Hunk,
+    second: &owned::Hunk,
+) -> Result<Option<(owned::Hunk, owned::Hunk)>, failure::Error> {
     // represent hunks in content order rather than application order
-    let (first_above, above, mut below) = match (
+    let (first_above, above, below) = match (
         // TODO: skip any comparisons against empty blocks
         first.added.start <= second.added.start,
         first.removed.start <= second.removed.start,
@@ -55,47 +55,45 @@ fn commute(
     // hunks on the first hunk's added side, and the second hunk's
     // removed side
     let (above_anchor, below_anchor) = if first_above {
-        (anchors(&above).3, anchors(&below).0)
+        (anchors(above).3, anchors(below).0)
     } else {
-        (anchors(&above).1, anchors(&below).2)
+        (anchors(above).1, anchors(below).2)
     };
-    // the hunks overlap, and cannot commute, so return them in their
-    // application order
+    // the hunks overlap, and cannot commute
     if above_anchor > below_anchor {
-        return Ok(if first_above {
-            (false, above, below)
-        } else {
-            (false, below, above)
-        });
+        return Ok(None);
     }
 
+    let above = above.clone();
+    let mut below = below.clone();
     let above_change_offset = (above.added.lines.len() as i64 - above.removed.lines.len() as i64)
         * if first_above { -1 } else { 1 };
     below.added.start = (below.added.start as i64 + above_change_offset) as usize;
     below.removed.start = (below.removed.start as i64 + above_change_offset) as usize;
 
-    Ok(if first_above {
-        (true, below, above)
+    Ok(Some(if first_above {
+        (below, above)
     } else {
-        (true, above, below)
-    })
+        (above, below)
+    }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::rc::Rc;
 
     #[test]
     fn test_commute() {
         let hunk1 = owned::Hunk {
             added: owned::Block {
                 start: 2,
-                lines: vec![b"bar\n".to_vec()],
+                lines: Rc::new(vec![b"bar\n".to_vec()]),
                 trailing_newline: true,
             },
             removed: owned::Block {
                 start: 1,
-                lines: vec![],
+                lines: Rc::new(vec![]),
                 trailing_newline: true,
             },
         };
@@ -103,18 +101,17 @@ mod tests {
         let hunk2 = owned::Hunk {
             added: owned::Block {
                 start: 1,
-                lines: vec![b"bar\n".to_vec()],
+                lines: Rc::new(vec![b"bar\n".to_vec()]),
                 trailing_newline: true,
             },
             removed: owned::Block {
                 start: 0,
-                lines: vec![],
+                lines: Rc::new(vec![]),
                 trailing_newline: true,
             },
         };
 
-        let (res, new1, new2) = commute(hunk1, hunk2).unwrap();
-        assert!(res);
+        let (new1, new2) = commute(&hunk1, &hunk2).unwrap().unwrap();
         assert_eq!(new1.added.start, 1);
         assert_eq!(new2.added.start, 3);
     }

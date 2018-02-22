@@ -1,6 +1,8 @@
 extern crate failure;
 extern crate git2;
 
+use std::rc::Rc;
+
 pub fn parse_diff(diff: &git2::Diff) -> Result<Vec<Patch>, failure::Error> {
     let mut ret = Vec::new();
     for (delta_idx, _delta) in diff.deltas().enumerate() {
@@ -10,34 +12,30 @@ pub fn parse_diff(diff: &git2::Diff) -> Result<Vec<Patch>, failure::Error> {
     Ok(ret)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block {
     pub start: usize,
-    pub lines: Vec<Vec<u8>>,
+    pub lines: Rc<Vec<Vec<u8>>>,
     pub trailing_newline: bool,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Hunk {
     pub added: Block,
     pub removed: Block,
 }
 impl Hunk {
     pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<Hunk, failure::Error> {
-        let mut ret = {
+        let (added_start, removed_start, mut added_lines, mut removed_lines) = {
             let (hunk, _size) = patch.hunk(idx)?;
-            Hunk {
-                added: Block {
-                    start: hunk.new_start() as usize,
-                    lines: Vec::with_capacity(hunk.new_lines() as usize),
-                    trailing_newline: true,
-                },
-                removed: Block {
-                    start: hunk.old_start() as usize,
-                    lines: Vec::with_capacity(hunk.old_lines() as usize),
-                    trailing_newline: true,
-                },
-            }
+            (
+                hunk.new_start() as usize,
+                hunk.old_start() as usize,
+                Vec::with_capacity(hunk.new_lines() as usize),
+                Vec::with_capacity(hunk.old_lines() as usize),
+            )
         };
+        let mut added_trailing_newline = true;
+        let mut removed_trailing_newline = true;
 
         for line_idx in 0..patch.num_lines_in_hunk(idx)? {
             let line = patch.line_in_hunk(idx, line_idx)?;
@@ -48,11 +46,11 @@ impl Hunk {
                     }
                     if line.new_lineno()
                         .ok_or_else(|| failure::err_msg("added line did not have lineno"))?
-                        as usize != ret.added.start + ret.added.lines.len()
+                        as usize != added_start + added_lines.len()
                     {
                         return Err(failure::err_msg("added line did not reach expected lineno"));
                     }
-                    ret.added.lines.push(Vec::from(line.content()))
+                    added_lines.push(Vec::from(line.content()))
                 }
                 '-' => {
                     if line.num_lines() > 1 {
@@ -60,26 +58,25 @@ impl Hunk {
                     }
                     if line.old_lineno()
                         .ok_or_else(|| failure::err_msg("removed line did not have lineno"))?
-                        as usize
-                        != ret.removed.start + ret.removed.lines.len()
+                        as usize != removed_start + removed_lines.len()
                     {
                         return Err(failure::err_msg(
                             "removed line did not reach expected lineno",
                         ));
                     }
-                    ret.removed.lines.push(Vec::from(line.content()))
+                    removed_lines.push(Vec::from(line.content()))
                 }
                 '>' => {
-                    if !ret.removed.trailing_newline {
+                    if !removed_trailing_newline {
                         return Err(failure::err_msg("removed nneof was already detected"));
                     };
-                    ret.removed.trailing_newline = false
+                    removed_trailing_newline = false
                 }
                 '<' => {
-                    if !ret.added.trailing_newline {
+                    if !added_trailing_newline {
                         return Err(failure::err_msg("added nneof was already detected"));
                     };
-                    ret.added.trailing_newline = false
+                    added_trailing_newline = false
                 }
                 _ => {
                     return Err(failure::err_msg(format!(
@@ -92,15 +89,26 @@ impl Hunk {
 
         {
             let (hunk, _size) = patch.hunk(idx)?;
-            if ret.added.lines.len() != hunk.new_lines() as usize {
+            if added_lines.len() != hunk.new_lines() as usize {
                 return Err(failure::err_msg("hunk added block size mismatch"));
             }
-            if ret.removed.lines.len() != hunk.old_lines() as usize {
+            if removed_lines.len() != hunk.old_lines() as usize {
                 return Err(failure::err_msg("hunk removed block size mismatch"));
             }
         }
 
-        Ok(ret)
+        Ok(Hunk {
+            added: Block {
+                start: added_start,
+                lines: Rc::new(added_lines),
+                trailing_newline: added_trailing_newline,
+            },
+            removed: Block {
+                start: removed_start,
+                lines: Rc::new(removed_lines),
+                trailing_newline: removed_trailing_newline,
+            },
+        })
     }
 }
 

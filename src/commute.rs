@@ -53,10 +53,7 @@ where
     }
 }
 
-fn commute(
-    first: &owned::Hunk,
-    second: &owned::Hunk,
-) -> Result<Option<(owned::Hunk, owned::Hunk)>, failure::Error> {
+fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk, owned::Hunk)> {
     let (_, _, first_upper, first_lower) = anchors(first);
     let (second_upper, second_lower, _, _) = anchors(second);
 
@@ -77,17 +74,17 @@ fn commute(
             {
                 // TODO: removed start positions probably need to be
                 // tweaked here
-                return Ok(Some((second.clone(), first.clone())));
+                return Some((second.clone(), first.clone()));
             } else if first.removed.lines.is_empty() && second.removed.lines.is_empty()
                 && uniform(first.added.lines.iter().chain(&*second.added.lines))
             {
                 // TODO: added start positions probably need to be
                 // tweaked here
-                return Ok(Some((second.clone(), first.clone())));
+                return Some((second.clone(), first.clone()));
             }
             // these hunks overlap and cannot be interleaved, so they
             // do not commute
-            return Ok(None);
+            return None;
         }
     };
 
@@ -98,11 +95,11 @@ fn commute(
     below.added.start = (below.added.start as i64 + above_change_offset) as usize;
     below.removed.start = (below.removed.start as i64 + above_change_offset) as usize;
 
-    Ok(Some(if first_above {
+    Some(if first_above {
         (below, above)
     } else {
         (above, below)
-    }))
+    })
 }
 
 #[cfg(test)]
@@ -138,7 +135,7 @@ mod tests {
             },
         };
 
-        let (new1, new2) = commute(&hunk1, &hunk2).unwrap().unwrap();
+        let (new1, new2) = commute(&hunk1, &hunk2).unwrap();
         assert_eq!(new1.added.start, 1);
         assert_eq!(new2.added.start, 3);
     }
@@ -171,7 +168,7 @@ mod tests {
             },
         };
 
-        let (new1, new2) = commute(&hunk1, &hunk2).unwrap().unwrap();
+        let (new1, new2) = commute(&hunk1, &hunk2).unwrap();
         assert_eq!(new1.added.lines.len(), 2);
         assert_eq!(new2.added.lines.len(), 4);
     }

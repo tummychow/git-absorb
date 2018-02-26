@@ -103,6 +103,25 @@ pub fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk
     })
 }
 
+pub fn commute_diff_before<'a, I>(after: &owned::Hunk, before: I) -> Option<owned::Hunk>
+where
+    I: iter::IntoIterator<Item = &'a owned::Hunk>,
+    <I as iter::IntoIterator>::IntoIter: iter::DoubleEndedIterator,
+{
+    before
+        .into_iter()
+        // the patch's hunks must be iterated in reverse application
+        // order (last applied to first applied), which also happens
+        // to be reverse line order (bottom to top), which also
+        // happens to be reverse of the order they're stored
+        .rev()
+        .fold(Some(after.clone()), |after, next| {
+            after
+                .and_then(|after| commute(next, &after))
+                .map(|(commuted_after, _)| commuted_after)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +191,50 @@ mod tests {
         let (new1, new2) = commute(&hunk1, &hunk2).unwrap();
         assert_eq!(new1.added.lines.len(), 2);
         assert_eq!(new2.added.lines.len(), 4);
+    }
+
+    #[test]
+    fn test_commute_patch() {
+        let patch = vec![
+            owned::Hunk {
+                added: owned::Block {
+                    start: 1,
+                    lines: Rc::new(vec![b"bar\n".to_vec()]),
+                    trailing_newline: true,
+                },
+                removed: owned::Block {
+                    start: 0,
+                    lines: Rc::new(vec![]),
+                    trailing_newline: true,
+                },
+            },
+            owned::Hunk {
+                added: owned::Block {
+                    start: 3,
+                    lines: Rc::new(vec![b"bar\n".to_vec()]),
+                    trailing_newline: true,
+                },
+                removed: owned::Block {
+                    start: 1,
+                    lines: Rc::new(vec![]),
+                    trailing_newline: true,
+                },
+            },
+        ];
+        let hunk = owned::Hunk {
+            added: owned::Block {
+                start: 5,
+                lines: Rc::new(vec![b"bar\n".to_vec()]),
+                trailing_newline: true,
+            },
+            removed: owned::Block {
+                start: 4,
+                lines: Rc::new(vec![]),
+                trailing_newline: true,
+            },
+        };
+
+        let commuted = commute_diff_before(&hunk, &patch).unwrap();
+        assert_eq!(commuted.added.start, 3);
     }
 }

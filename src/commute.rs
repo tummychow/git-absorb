@@ -129,6 +129,9 @@ mod tests {
 
     #[test]
     fn test_commute() {
+        // example init: <<EOF
+        // foo
+        // EOF
         let hunk1 = owned::Hunk {
             added: owned::Block {
                 start: 2,
@@ -141,7 +144,10 @@ mod tests {
                 trailing_newline: true,
             },
         };
-
+        // after hunk1: <<EOF
+        // foo
+        // bar
+        // EOF
         let hunk2 = owned::Hunk {
             added: owned::Block {
                 start: 1,
@@ -154,6 +160,11 @@ mod tests {
                 trailing_newline: true,
             },
         };
+        // after hunk2: <<EOF
+        // bar
+        // foo
+        // bar
+        // EOF
 
         let (new1, new2) = commute(&hunk1, &hunk2).unwrap();
         assert_eq!(new1.added.start, 1);
@@ -195,6 +206,10 @@ mod tests {
 
     #[test]
     fn test_commute_patch() {
+        // example init: <<EOF
+        // foo
+        // foo
+        // EOF
         let patch = vec![
             owned::Hunk {
                 added: owned::Block {
@@ -221,6 +236,12 @@ mod tests {
                 },
             },
         ];
+        // after patch: <<EOF
+        // bar
+        // foo
+        // bar
+        // foo
+        // EOF
         let hunk = owned::Hunk {
             added: owned::Block {
                 start: 5,
@@ -233,6 +254,13 @@ mod tests {
                 trailing_newline: true,
             },
         };
+        // after hunk: <<EOF
+        // bar
+        // foo
+        // bar
+        // foo
+        // bar
+        // EOF
 
         let commuted = commute_diff_before(&hunk, &patch).unwrap();
         assert_eq!(commuted.added.start, 3);

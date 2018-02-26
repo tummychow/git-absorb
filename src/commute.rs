@@ -53,7 +53,7 @@ where
     }
 }
 
-fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk, owned::Hunk)> {
+pub fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk, owned::Hunk)> {
     let (_, _, first_upper, first_lower) = anchors(first);
     let (second_upper, second_lower, _, _) = anchors(second);
 

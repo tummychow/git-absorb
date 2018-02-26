@@ -43,11 +43,12 @@ fn anchors(hunk: &owned::Hunk) -> (usize, usize, usize, usize) {
 ///
 /// `uniform()` is short-circuiting. It will stop processing as soon
 /// as it finds two pairwise inequal elements.
-fn uniform<I, E>(mut iter: I) -> bool
+fn uniform<I, E>(iter: I) -> bool
 where
-    I: iter::Iterator<Item = E>,
+    I: iter::IntoIterator<Item = E>,
     E: ::std::cmp::Eq,
 {
+    let mut iter = iter.into_iter();
     match iter.next() {
         Some(first) => iter.all(|e| e == first),
         None => true,

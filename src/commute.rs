@@ -115,11 +115,11 @@ where
         // to be reverse line order (bottom to top), which also
         // happens to be reverse of the order they're stored
         .rev()
-        .fold(Some(after.clone()), |after, next| {
+        .fold(Some(after.clone()), |after, next| 
             after
                 .and_then(|after| commute(next, &after))
                 .map(|(commuted_after, _)| commuted_after)
-        })
+        )
 }
 
 #[cfg(test)]

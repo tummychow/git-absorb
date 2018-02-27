@@ -1,7 +1,6 @@
 extern crate failure;
 
 use owned;
-use std::iter;
 
 /// Returns the unchanged lines around this hunk.
 ///
@@ -45,8 +44,8 @@ fn anchors(hunk: &owned::Hunk) -> (usize, usize, usize, usize) {
 /// as it finds two pairwise inequal elements.
 fn uniform<I, E>(iter: I) -> bool
 where
-    I: iter::IntoIterator<Item = E>,
-    E: ::std::cmp::Eq,
+    I: IntoIterator<Item = E>,
+    E: Eq,
 {
     let mut iter = iter.into_iter();
     match iter.next() {
@@ -106,8 +105,8 @@ pub fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk
 
 pub fn commute_diff_before<'a, I>(after: &owned::Hunk, before: I) -> Option<owned::Hunk>
 where
-    I: iter::IntoIterator<Item = &'a owned::Hunk>,
-    <I as iter::IntoIterator>::IntoIter: iter::DoubleEndedIterator,
+    I: IntoIterator<Item = &'a owned::Hunk>,
+    <I as IntoIterator>::IntoIter: DoubleEndedIterator,
 {
     before
         .into_iter()
@@ -174,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_commute_interleave() {
-        let mut line = iter::repeat(b"bar\n".to_vec());
+        let mut line = ::std::iter::repeat(b"bar\n".to_vec());
         let hunk1 = owned::Hunk {
             added: owned::Block {
                 start: 1,

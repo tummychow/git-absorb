@@ -6,7 +6,6 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 
-use std::process;
 use slog::Drain;
 
 fn main() {
@@ -70,6 +69,6 @@ fn main() {
         crit!(logger, "absorb failed"; "err" => e.to_string());
         // wait for async logger to finish writing messages
         drop(logger);
-        process::exit(1);
+        ::std::process::exit(1);
     }
 }

@@ -65,5 +65,56 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
            "index" => format!("{:?}", index),
     );
 
+    'patch: for index_patch in index.iter() {
+        'hunk: for index_hunk in &index_patch.hunks {
+            let mut commuted_index_hunk = index_hunk.clone();
+            let mut commuted_old_path = match index_patch.old_path.as_ref() {
+                Some(path) => path,
+                // this index patch is for a newly added file, so it
+                // can't be absorbed, and the whole patch should be
+                // skipped
+                None => continue 'patch,
+            };
+
+            // find the newest commit that the hunk cannot commute
+            // with
+            let mut dest_commit = None;
+            'commit: for &(ref commit, ref diff) in &stack {
+                let next_patch = match diff.by_new(commuted_old_path) {
+                    Some(patch) => patch,
+                    // this commit doesn't touch the hunk's file, so
+                    // they trivially commute, and the next commit
+                    // should be considered
+                    None => continue 'commit,
+                };
+                commuted_old_path = match next_patch.old_path.as_ref() {
+                    Some(path) => path,
+                    // this commit introduced the file that the hunk
+                    // is part of, so the hunk cannot commute with it
+                    None => {
+                        dest_commit = Some(commit);
+                        break 'commit;
+                    }
+                };
+                commuted_index_hunk =
+                    match commute::commute_diff_before(&commuted_index_hunk, &next_patch.hunks) {
+                        Some(hunk) => hunk,
+                        // this commit contains a hunk that cannot
+                        // commute with the hunk being absorbed
+                        None => {
+                            dest_commit = Some(commit);
+                            break 'commit;
+                        }
+                    };
+            }
+            let dest_commit = match dest_commit {
+                Some(commit) => commit,
+                // the hunk commutes with every commit in the stack,
+                // so there is no commit to absorb it into
+                None => continue 'hunk,
+            };
+        }
+    }
+
     Ok(())
 }

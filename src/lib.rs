@@ -37,7 +37,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         let stack = stack::working_stack(&repo, base.as_ref(), config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
         for commit in &stack {
-            let diff = owned::parse_diff(&repo.diff_tree_to_tree(
+            let diff = owned::Diff::new(&repo.diff_tree_to_tree(
                 if commit.parents().len() == 0 {
                     None
                 } else {
@@ -56,7 +56,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         stack.into_iter().zip(diffs.into_iter()).collect()
     };
 
-    let index = owned::parse_diff(&repo.diff_tree_to_index(
+    let index = owned::Diff::new(&repo.diff_tree_to_index(
         Some(&repo.head()?.peel_to_tree()?),
         None,
         diff_options.as_mut(),

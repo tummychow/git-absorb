@@ -2,14 +2,55 @@ extern crate failure;
 extern crate git2;
 
 use std::rc::Rc;
+use std::collections::hash_map::HashMap;
 
-pub fn parse_diff(diff: &git2::Diff) -> Result<Vec<Patch>, failure::Error> {
-    let mut ret = Vec::new();
-    for (delta_idx, _delta) in diff.deltas().enumerate() {
-        ret.push(Patch::new(&mut git2::Patch::from_diff(diff, delta_idx)?
-            .ok_or_else(|| failure::err_msg("got empty delta"))?)?);
+#[derive(Debug)]
+pub struct Diff {
+    patches: Vec<Patch>,
+    by_new: HashMap<Vec<u8>, usize>,
+    by_old: HashMap<Vec<u8>, usize>,
+}
+impl ::std::ops::Deref for Diff {
+    type Target = [Patch];
+    fn deref(&self) -> &[Patch] {
+        self.patches.as_slice()
     }
-    Ok(ret)
+}
+impl Diff {
+    pub fn new(diff: &git2::Diff) -> Result<Diff, failure::Error> {
+        let mut ret = Diff {
+            patches: Vec::new(),
+            by_old: HashMap::new(),
+            by_new: HashMap::new(),
+        };
+
+        for (delta_idx, _delta) in diff.deltas().enumerate() {
+            let patch = Patch::new(&mut git2::Patch::from_diff(diff, delta_idx)?
+                .ok_or_else(|| failure::err_msg("got empty delta"))?)?;
+            if let Some(path) = patch.old_path.as_ref() {
+                if ret.by_old.contains_key(path) {
+                    // TODO: would this case be hit if the diff was put through copy detection?
+                    return Err(failure::err_msg("old path already occupied"));
+                }
+                ret.by_old.insert(path.to_vec(), ret.patches.len());
+            }
+            if let Some(path) = patch.new_path.as_ref() {
+                if ret.by_new.contains_key(path) {
+                    return Err(failure::err_msg("new path already occupied"));
+                }
+                ret.by_new.insert(path.to_vec(), ret.patches.len());
+            }
+            ret.patches.push(patch);
+        }
+
+        Ok(ret)
+    }
+    pub fn by_old(&self, path: &[u8]) -> Option<&Patch> {
+        self.by_old.get(path).map(|&idx| &self.patches[idx])
+    }
+    pub fn by_new(&self, path: &[u8]) -> Option<&Patch> {
+        self.by_new.get(path).map(|&idx| &self.patches[idx])
+    }
 }
 
 #[derive(Debug, Clone)]

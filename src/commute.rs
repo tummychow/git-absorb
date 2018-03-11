@@ -12,7 +12,7 @@ use owned;
 /// - the first unchanged line after it, on the added side
 ///
 /// This function returns those four line numbers, in that order.
-fn anchors(hunk: &owned::Hunk) -> (usize, usize, usize, usize) {
+pub fn anchors(hunk: &owned::Hunk) -> (usize, usize, usize, usize) {
     match (hunk.removed.lines.len(), hunk.added.lines.len()) {
         (0, 0) => (0, 1, 0, 1),
         (removed_len, 0) => (

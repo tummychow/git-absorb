@@ -10,6 +10,7 @@ slog = "~2.1"
 slog-term = "~2.3"
 slog-async = "~2.2"
 failure = "~0.1"
+memchr = "~2.0"
 
 [dev-dependencies]
 tempdir = "~0.3"

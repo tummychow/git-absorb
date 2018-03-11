@@ -1,11 +1,14 @@
 extern crate failure;
 extern crate git2;
+extern crate memchr;
 #[macro_use]
 extern crate slog;
 
 mod owned;
 mod stack;
 mod commute;
+
+use std::io::Write;
 
 pub struct Config<'a> {
     pub dry_run: bool,
@@ -146,4 +149,60 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     }
 
     Ok(())
+}
+
+fn apply_hunk_to_tree<'repo>(
+    repo: &'repo git2::Repository,
+    base: &git2::Tree,
+    hunk: &owned::Hunk,
+    path: &[u8],
+) -> Result<git2::Tree<'repo>, failure::Error> {
+    let mut treebuilder = repo.treebuilder(Some(base))?;
+    let (blob, mode) = {
+        let entry = treebuilder
+            .get(path)?
+            .ok_or_else(|| failure::err_msg("couldn't find tree entry for path"))?;
+        (repo.find_blob(entry.id())?, entry.filemode())
+    };
+
+    // TODO: convert path to OsStr and pass it during blob_writer
+    // creation, to get gitattributes handling (note that converting
+    // &[u8] to &std::path::Path is only possible on unixy platforms)
+    let mut blobwriter = repo.blob_writer(None)?;
+    let old_content = blob.content();
+    let (old_start, _, _, _) = commute::anchors(hunk);
+
+    // first, write the lines from the old content that are above the
+    // hunk
+    let old_content = {
+        let (pre, post) = old_content.split_at(skip_past_nth(b'\n', old_content, old_start));
+        blobwriter.write_all(pre)?;
+        post
+    };
+    // next, write the added side of the hunk
+    for line in &**hunk.added.lines {
+        blobwriter.write_all(line)?;
+    }
+    // if this hunk removed lines from the old content, those must be
+    // skipped
+    let old_content = &old_content[skip_past_nth(b'\n', old_content, hunk.removed.lines.len())..];
+    // finally, write the remaining lines of the old content
+    blobwriter.write_all(old_content)?;
+
+    treebuilder.insert(path, blobwriter.commit()?, mode)?;
+    Ok(repo.find_tree(treebuilder.write()?)?)
+}
+
+fn skip_past_nth(needle: u8, haystack: &[u8], n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+
+    // TODO: is fuse necessary here?
+    memchr::Memchr::new(needle, haystack)
+        .fuse()
+        .skip(n - 1)
+        .next()
+        .map(|x| x + 1)
+        .unwrap_or(haystack.len())
 }

@@ -16,7 +16,7 @@ fn max_stack(repo: &git2::Repository) -> usize {
 
 pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
-    custom_base: Option<&git2::Commit<'repo>>,
+    base: Option<&git2::Commit<'repo>>,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>, failure::Error> {
     let head = repo.head()?;
@@ -31,9 +31,9 @@ pub fn working_stack<'repo>(
     revwalk.push_head()?;
     debug!(logger, "head pushed"; "head" => head.name());
 
-    if let Some(base_commit) = custom_base {
-        revwalk.hide(base_commit.id())?;
-        debug!(logger, "commit hidden"; "commit" => base_commit.id().to_string());
+    if let Some(base) = base {
+        revwalk.hide(base.id())?;
+        debug!(logger, "commit hidden"; "commit" => base.id().to_string());
     } else {
         for branch in repo.branches(Some(git2::BranchType::Local))? {
             let (branch, _) = branch?;

@@ -147,6 +147,40 @@ impl Hunk {
             },
         })
     }
+
+    /// Returns the unchanged lines around this hunk.
+    ///
+    /// Any given hunk has four anchor points:
+    ///
+    /// - the last unchanged line before it, on the removed side
+    /// - the first unchanged line after it, on the removed side
+    /// - the last unchanged line before it, on the added side
+    /// - the first unchanged line after it, on the added side
+    ///
+    /// This function returns those four line numbers, in that order.
+    pub fn anchors(&self) -> (usize, usize, usize, usize) {
+        match (self.removed.lines.len(), self.added.lines.len()) {
+            (0, 0) => (0, 1, 0, 1),
+            (removed_len, 0) => (
+                self.removed.start - 1,
+                self.removed.start + removed_len,
+                self.removed.start - 1,
+                self.removed.start,
+            ),
+            (0, added_len) => (
+                self.added.start - 1,
+                self.added.start,
+                self.added.start - 1,
+                self.added.start + added_len,
+            ),
+            (removed_len, added_len) => (
+                self.removed.start - 1,
+                self.removed.start + removed_len,
+                self.added.start - 1,
+                self.added.start + added_len,
+            ),
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -2,40 +2,6 @@ extern crate failure;
 
 use owned;
 
-/// Returns the unchanged lines around this hunk.
-///
-/// Any given hunk has four anchor points:
-///
-/// - the last unchanged line before it, on the removed side
-/// - the first unchanged line after it, on the removed side
-/// - the last unchanged line before it, on the added side
-/// - the first unchanged line after it, on the added side
-///
-/// This function returns those four line numbers, in that order.
-pub fn anchors(hunk: &owned::Hunk) -> (usize, usize, usize, usize) {
-    match (hunk.removed.lines.len(), hunk.added.lines.len()) {
-        (0, 0) => (0, 1, 0, 1),
-        (removed_len, 0) => (
-            hunk.removed.start - 1,
-            hunk.removed.start + removed_len,
-            hunk.removed.start - 1,
-            hunk.removed.start,
-        ),
-        (0, added_len) => (
-            hunk.added.start - 1,
-            hunk.added.start,
-            hunk.added.start - 1,
-            hunk.added.start + added_len,
-        ),
-        (removed_len, added_len) => (
-            hunk.removed.start - 1,
-            hunk.removed.start + removed_len,
-            hunk.added.start - 1,
-            hunk.added.start + added_len,
-        ),
-    }
-}
-
 /// Tests if all elements of the iterator are equal to each other.
 ///
 /// An empty iterator returns `true`.
@@ -55,8 +21,8 @@ where
 }
 
 pub fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk, owned::Hunk)> {
-    let (_, _, first_upper, first_lower) = anchors(first);
-    let (second_upper, second_lower, _, _) = anchors(second);
+    let (_, _, first_upper, first_lower) = first.anchors();
+    let (second_upper, second_lower, _, _) = second.anchors();
 
     // represent hunks in content order rather than application order
     let (first_above, above, below) = {

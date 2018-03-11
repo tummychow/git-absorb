@@ -183,7 +183,7 @@ fn apply_hunk_to_tree<'repo>(
     // &[u8] to &std::path::Path is only possible on unixy platforms)
     let mut blobwriter = repo.blob_writer(None)?;
     let old_content = blob.content();
-    let (old_start, _, _, _) = commute::anchors(hunk);
+    let (old_start, _, _, _) = hunk.anchors();
 
     // first, write the lines from the old content that are above the
     // hunk

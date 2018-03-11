@@ -1,7 +1,23 @@
 [package]
 name = "git-absorb"
 version = "0.1.0"
-authors = ["tummychow <tummychow@users.noreply.github.com>"]
+
+authors = ["Stephen Jung <tummychow511@gmail.com>"]
+description = "git commit --fixup, but automatic"
+homepage = "https://github.com/tummychow/git-absorb"
+repository = "https://github.com/tummychow/git-absorb"
+readme = "README.md"
+license = "BSD-3-Clause"
+
+include = [
+    "**/*.rs",
+    "Cargo.*",
+    "*.md",
+]
+
+[[bin]]
+name = "git-absorb"
+path = "src/main.rs"
 
 [dependencies]
 git2 = "~0.6"

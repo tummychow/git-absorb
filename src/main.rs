@@ -55,8 +55,8 @@ fn main() {
     let mut logger = slog::Logger::root(drain, o!());
     if args.is_present("verbose") {
         logger = logger.new(o!(
-            "module" => slog::FnValue(|record| {record.module()}),
-            "line" => slog::FnValue(|record| {record.line()}),
+            "module" => slog::FnValue(|record| record.module()),
+            "line" => slog::FnValue(|record| record.line()),
         ));
     }
 

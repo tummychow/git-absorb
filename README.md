@@ -48,3 +48,5 @@ Note that `git absorb` does _not_ use the system libgit2. This means you do not 
 - windows support and appveyor
 - document stack and commute details
 - more commutation cases (esp copy/rename detection)
+- don't load all hunks in memory simultaneously because they could be huge
+- implement some kind of index locking to protect against concurrent modifications

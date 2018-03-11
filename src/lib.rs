@@ -148,8 +148,6 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             };
 
             head_tree = apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
-            // TODO: this creates reflog cruft, we should have exactly
-            // one reflog entry for the entire absorption
             head_commit = repo.find_commit(repo.commit(
                 Some("HEAD"),
                 &signature,

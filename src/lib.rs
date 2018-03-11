@@ -191,7 +191,7 @@ fn apply_hunk_to_tree<'repo>(
         post
     };
     // next, write the added side of the hunk
-    for line in &**hunk.added.lines {
+    for line in &*hunk.added.lines {
         blobwriter.write_all(line)?;
     }
     // if this hunk removed lines from the old content, those must be

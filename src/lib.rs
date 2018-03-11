@@ -73,45 +73,82 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 // this index patch is for a newly added file, so it
                 // can't be absorbed, and the whole patch should be
                 // skipped
-                None => continue 'patch,
+                None => {
+                    debug!(config.logger, "skipped added hunk");
+                    continue 'patch;
+                }
             };
+            debug!(config.logger, "commuting hunk";
+                   "path" => String::from_utf8_lossy(commuted_old_path).into_owned(),
+                   "header" => format!("-{},{} +{},{}",
+                                     commuted_index_hunk.removed.start,
+                                     commuted_index_hunk.removed.lines.len(),
+                                     commuted_index_hunk.added.start,
+                                     commuted_index_hunk.added.lines.len(),
+                   ),
+            );
 
             // find the newest commit that the hunk cannot commute
             // with
             let mut dest_commit = None;
             'commit: for &(ref commit, ref diff) in &stack {
+                let c_logger = config.logger.new(o!(
+                    "commit" => commit.id().to_string(),
+                ));
                 let next_patch = match diff.by_new(commuted_old_path) {
                     Some(patch) => patch,
                     // this commit doesn't touch the hunk's file, so
                     // they trivially commute, and the next commit
                     // should be considered
-                    None => continue 'commit,
+                    None => {
+                        debug!(c_logger, "skipped commit with no path");
+                        continue 'commit;
+                    }
                 };
                 commuted_old_path = match next_patch.old_path.as_ref() {
-                    Some(path) => path,
+                    Some(path) => {
+                        if commuted_old_path != path {
+                            debug!(c_logger, "changed commute path";
+                                   "path" => String::from_utf8_lossy(path).into_owned(),
+                            );
+                        }
+                        path
+                    }
                     // this commit introduced the file that the hunk
                     // is part of, so the hunk cannot commute with it
                     None => {
+                        debug!(c_logger, "found noncommutative commit by add");
                         dest_commit = Some(commit);
                         break 'commit;
                     }
                 };
-                commuted_index_hunk =
-                    match commute::commute_diff_before(&commuted_index_hunk, &next_patch.hunks) {
-                        Some(hunk) => hunk,
-                        // this commit contains a hunk that cannot
-                        // commute with the hunk being absorbed
-                        None => {
-                            dest_commit = Some(commit);
-                            break 'commit;
-                        }
-                    };
+                commuted_index_hunk = match commute::commute_diff_before(
+                    &commuted_index_hunk,
+                    &next_patch.hunks,
+                ) {
+                    Some(hunk) => {
+                        debug!(c_logger, "commuted hunk with commit";
+                               "offset" => (hunk.added.start as i64) - (commuted_index_hunk.added.start as i64),
+                        );
+                        hunk
+                    }
+                    // this commit contains a hunk that cannot
+                    // commute with the hunk being absorbed
+                    None => {
+                        debug!(c_logger, "found noncommutative commit by conflict");
+                        dest_commit = Some(commit);
+                        break 'commit;
+                    }
+                };
             }
             let dest_commit = match dest_commit {
                 Some(commit) => commit,
                 // the hunk commutes with every commit in the stack,
                 // so there is no commit to absorb it into
-                None => continue 'hunk,
+                None => {
+                    debug!(config.logger, "could not find noncommutative commit");
+                    continue 'hunk;
+                }
             };
         }
     }

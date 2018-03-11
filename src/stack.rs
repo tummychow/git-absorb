@@ -51,28 +51,53 @@ pub fn working_stack<'repo>(
         }
     }
 
-    let mut ret = Vec::new();
     let sig = repo.signature()?;
-    for rev in revwalk {
-        let commit = repo.find_commit(rev?)?;
-        if commit.parents().len() > 1 {
-            warn!(logger, "merge commit found"; "commit" => commit.id().to_string());
-            break;
-        }
-        if commit.author().name_bytes() != sig.name_bytes()
-            || commit.author().email_bytes() != sig.email_bytes()
-        {
-            warn!(logger, "foreign author found"; "commit" => commit.id().to_string());
-            break;
-        }
-        if ret.len() == max_stack(repo) {
-            warn!(logger, "stack limit reached"; "limit" => ret.len());
-            break;
-        }
-        debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
-        ret.push(commit);
-    }
-    Ok(ret)
+    let sig = (sig.name_bytes(), sig.email_bytes());
+
+    let stack_limit = None.unwrap_or_else(|| max_stack(repo));
+    let mut so_far = 0;
+
+    let revwalk = revwalk
+        // limit the maximum stack height
+        .take_while(|_| if stack_limit - so_far == 0 {
+            warn!(logger, "stack limit reached";
+                  "limit" => stack_limit,
+            );
+            false
+        } else {
+            so_far += 1;
+            true
+        })
+        // retrieve the full commit object for this id
+        .map(|id| repo.find_commit(id?))
+        .map(|commit| commit.map_err(failure::Error::from))
+        .take_while(|commit| match commit {
+            &Err(_) => true,
+            &Ok(ref commit) => {
+                // stop at the first merge commit
+                if commit.parents().len() > 1 {
+                    warn!(logger, "merge commit found";
+                          "commit" => commit.id().to_string(),
+                    );
+                    return false;
+                }
+                // stop at the first foreign-authored commit
+                if (commit.author().name_bytes(), commit.author().email_bytes()) != sig {
+                    warn!(logger, "foreign author found";
+                          "commit" => commit.id().to_string(),
+                    );
+                    return false;
+                }
+                true
+            }
+        })
+        // print some logs along the way
+        .inspect(|commit| if let &Ok(ref commit) = commit {
+            debug!(logger, "commit pushed onto stack";
+                   "commit" => commit.id().to_string(),
+            );
+        });
+    revwalk.collect()
 }
 
 #[cfg(test)]

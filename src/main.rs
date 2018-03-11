@@ -52,13 +52,13 @@ fn main() {
             slog::Level::Warning
         },
     ).fuse();
-    let logger = slog::Logger::root(
-        drain,
-        o!(
+    let mut logger = slog::Logger::root(drain, o!());
+    if args.is_present("verbose") {
+        logger = logger.new(o!(
             "module" => slog::FnValue(|record| {record.module()}),
             "line" => slog::FnValue(|record| {record.line()}),
-        ),
-    );
+        ));
+    }
 
     if let Err(e) = git_absorb::run(&git_absorb::Config {
         dry_run: args.is_present("dry-run"),

@@ -59,14 +59,15 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         stack.into_iter().zip(diffs.into_iter()).collect()
     };
 
-    let index = owned::Diff::new(&repo.diff_tree_to_index(
-        Some(&repo.head()?.peel_to_tree()?),
-        None,
-        diff_options.as_mut(),
-    )?)?;
+    let mut head_tree = repo.head()?.peel_to_tree()?;
+    let index =
+        owned::Diff::new(&repo.diff_tree_to_index(Some(&head_tree), None, diff_options.as_mut())?)?;
     trace!(config.logger, "parsed index";
            "index" => format!("{:?}", index),
     );
+
+    let signature = repo.signature()?;
+    let mut head_commit = repo.head()?.peel_to_commit()?;
 
     'patch: for index_patch in index.iter() {
         'hunk: for index_hunk in &index_patch.hunks {
@@ -145,6 +146,18 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                     continue 'hunk;
                 }
             };
+
+            head_tree = apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
+            // TODO: this creates reflog cruft, we should have exactly
+            // one reflog entry for the entire absorption
+            head_commit = repo.find_commit(repo.commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                &format!("fixup! {}", dest_commit.id()),
+                &head_tree,
+                &[&head_commit],
+            )?)?;
         }
     }
 

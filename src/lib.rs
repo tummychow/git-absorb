@@ -46,7 +46,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 Some(&commit.tree()?),
                 diff_options.as_mut(),
             )?)?;
-            debug!(config.logger, "parsed commit diff";
+            trace!(config.logger, "parsed commit diff";
                    "commit" => commit.id().to_string(),
                    "diff" => format!("{:?}", diff),
             );
@@ -61,7 +61,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         None,
         diff_options.as_mut(),
     )?)?;
-    debug!(config.logger, "parsed index";
+    trace!(config.logger, "parsed index";
            "index" => format!("{:?}", index),
     );
 

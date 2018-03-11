@@ -27,19 +27,15 @@ impl Diff {
         for (delta_idx, _delta) in diff.deltas().enumerate() {
             let patch = Patch::new(&mut git2::Patch::from_diff(diff, delta_idx)?
                 .ok_or_else(|| failure::err_msg("got empty delta"))?)?;
-            if let Some(path) = patch.old_path.as_ref() {
-                if ret.by_old.contains_key(path) {
-                    // TODO: would this case be hit if the diff was put through copy detection?
-                    return Err(failure::err_msg("old path already occupied"));
-                }
-                ret.by_old.insert(path.to_vec(), ret.patches.len());
+            if ret.by_old.contains_key(&patch.old_path) {
+                // TODO: would this case be hit if the diff was put through copy detection?
+                return Err(failure::err_msg("old path already occupied"));
             }
-            if let Some(path) = patch.new_path.as_ref() {
-                if ret.by_new.contains_key(path) {
-                    return Err(failure::err_msg("new path already occupied"));
-                }
-                ret.by_new.insert(path.to_vec(), ret.patches.len());
+            ret.by_old.insert(patch.old_path.clone(), ret.patches.len());
+            if ret.by_new.contains_key(&patch.new_path) {
+                return Err(failure::err_msg("new path already occupied"));
             }
+            ret.by_new.insert(patch.new_path.clone(), ret.patches.len());
             ret.patches.push(patch);
         }
 
@@ -155,9 +151,9 @@ impl Hunk {
 
 #[derive(Debug)]
 pub struct Patch {
-    pub old_path: Option<Vec<u8>>,
+    pub old_path: Vec<u8>,
     pub old_id: git2::Oid,
-    pub new_path: Option<Vec<u8>>,
+    pub new_path: Vec<u8>,
     pub new_id: git2::Oid,
     pub status: git2::Delta,
     pub hunks: Vec<Hunk>,
@@ -165,9 +161,19 @@ pub struct Patch {
 impl Patch {
     pub fn new(patch: &mut git2::Patch) -> Result<Patch, failure::Error> {
         let mut ret = Patch {
-            old_path: patch.delta().old_file().path_bytes().map(Vec::from),
+            old_path: patch
+                .delta()
+                .old_file()
+                .path_bytes()
+                .map(Vec::from)
+                .ok_or_else(|| failure::err_msg("delta with empty old path"))?,
             old_id: patch.delta().old_file().id(),
-            new_path: patch.delta().new_file().path_bytes().map(Vec::from),
+            new_path: patch
+                .delta()
+                .new_file()
+                .path_bytes()
+                .map(Vec::from)
+                .ok_or_else(|| failure::err_msg("delta with empty new path"))?,
             new_id: patch.delta().new_file().id(),
             status: patch.delta().status(),
             hunks: Vec::with_capacity(patch.num_hunks()),

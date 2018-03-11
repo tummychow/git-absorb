@@ -68,16 +68,14 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     'patch: for index_patch in index.iter() {
         'hunk: for index_hunk in &index_patch.hunks {
             let mut commuted_index_hunk = index_hunk.clone();
-            let mut commuted_old_path = match index_patch.old_path.as_ref() {
-                Some(path) => path,
-                // this index patch is for a newly added file, so it
-                // can't be absorbed, and the whole patch should be
-                // skipped
-                None => {
-                    debug!(config.logger, "skipped added hunk");
-                    continue 'patch;
-                }
-            };
+            if index_patch.status != git2::Delta::Modified {
+                debug!(config.logger, "skipped non-modified hunk";
+                       "path" => String::from_utf8_lossy(index_patch.new_path.as_slice()).into_owned(),
+                       "status" => format!("{:?}", index_patch.status),
+                );
+                continue 'patch;
+            }
+            let mut commuted_old_path = index_patch.old_path.as_slice();
             debug!(config.logger, "commuting hunk";
                    "path" => String::from_utf8_lossy(commuted_old_path).into_owned(),
                    "header" => format!("-{},{} +{},{}",
@@ -105,23 +103,17 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                         continue 'commit;
                     }
                 };
-                commuted_old_path = match next_patch.old_path.as_ref() {
-                    Some(path) => {
-                        if commuted_old_path != path {
-                            debug!(c_logger, "changed commute path";
-                                   "path" => String::from_utf8_lossy(path).into_owned(),
-                            );
-                        }
-                        path
-                    }
-                    // this commit introduced the file that the hunk
-                    // is part of, so the hunk cannot commute with it
-                    None => {
-                        debug!(c_logger, "found noncommutative commit by add");
-                        dest_commit = Some(commit);
-                        break 'commit;
-                    }
-                };
+                if next_patch.status == git2::Delta::Added {
+                    debug!(c_logger, "found noncommutative commit by add");
+                    dest_commit = Some(commit);
+                    break 'commit;
+                }
+                if commuted_old_path != next_patch.old_path.as_slice() {
+                    debug!(c_logger, "changed commute path";
+                           "path" => String::from_utf8_lossy(&next_patch.old_path).into_owned(),
+                    );
+                    commuted_old_path = next_patch.old_path.as_slice();
+                }
                 commuted_index_hunk = match commute::commute_diff_before(
                     &commuted_index_hunk,
                     &next_patch.hunks,

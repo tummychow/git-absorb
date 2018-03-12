@@ -147,15 +147,31 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 }
             };
 
-            head_tree = apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
-            head_commit = repo.find_commit(repo.commit(
-                Some("HEAD"),
-                &signature,
-                &signature,
-                &format!("fixup! {}", dest_commit.id()),
-                &head_tree,
-                &[&head_commit],
-            )?)?;
+            if !config.dry_run {
+                head_tree =
+                    apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
+                head_commit = repo.find_commit(repo.commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    &format!("fixup! {}", dest_commit.id()),
+                    &head_tree,
+                    &[&head_commit],
+                )?)?;
+                info!(config.logger, "committed";
+                      "commit" => head_commit.id().to_string(),
+                );
+            } else {
+                info!(config.logger, "would have committed";
+                      "fixup" => dest_commit.id().to_string(),
+                      "header" => format!("-{},{} +{},{}",
+                                          index_hunk.removed.start,
+                                          index_hunk.removed.lines.len(),
+                                          index_hunk.added.start,
+                                          index_hunk.added.lines.len(),
+                      ),
+                );
+            }
         }
     }
 

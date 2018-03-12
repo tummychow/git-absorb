@@ -49,7 +49,7 @@ fn main() {
         if args.is_present("verbose") {
             slog::Level::Debug
         } else {
-            slog::Level::Warning
+            slog::Level::Info
         },
     ).fuse();
     let mut logger = slog::Logger::root(drain, o!());

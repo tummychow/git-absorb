@@ -37,7 +37,7 @@ Note that `git absorb` does _not_ use the system libgit2. This means you do not 
 
 ## TODO
 
-- implement force and dry-run flags
+- implement force flag
 - implement remote default branch check
 - add flag to automatically run rebase after successful absorption
 - add smaller force flags to disable individual safety checks

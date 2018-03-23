@@ -75,6 +75,47 @@ pub fn working_stack<'repo>(
     Ok(ret)
 }
 
+struct TakeWhileOk<I, T, E, P>
+where
+    I: Iterator<Item = Result<T, E>>,
+{
+    iter: I,
+    predicate: P,
+}
+
+impl<I, T, E, P> TakeWhileOk<I, T, E, P>
+where
+    I: Iterator<Item = Result<T, E>>,
+    P: FnMut(&T) -> bool,
+{
+    fn new<J>(iter: J, pred: P) -> TakeWhileOk<I, T, E, P>
+    where
+        J: IntoIterator<Item = Result<T, E>, IntoIter = I>,
+    {
+        TakeWhileOk {
+            iter: iter.into_iter(),
+            predicate: pred,
+        }
+    }
+}
+
+impl<I, T, E, P> Iterator for TakeWhileOk<I, T, E, P>
+where
+    I: Iterator<Item = Result<T, E>>,
+    P: FnMut(&T) -> bool,
+{
+    type Item = I::Item;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.iter.next();
+        if let Some(Ok(ref v)) = next {
+            if !(self.predicate)(v) {
+                return None;
+            }
+        }
+        next
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate tempdir;

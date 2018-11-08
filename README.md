@@ -21,12 +21,10 @@ git rebase -i --autosquash master
 You will need the following:
 
 - [cargo](https://github.com/rust-lang/cargo)
-- [CMake](https://cmake.org)
-- libgit2 [optional dependencies](https://github.com/libgit2/libgit2#optional-dependencies)
 
 Then `cargo install git-absorb`. Make sure that `$CARGO_HOME/bin` is on your `$PATH` so that git can find the command. (`$CARGO_HOME` defaults to `~/.cargo`.)
 
-Note that `git absorb` does _not_ use the system libgit2. This means you do not need to have libgit2 installed to build or run it. However, this does mean you have to be able to build libgit2, hence the build-time dependency on CMake.
+Note that `git absorb` does _not_ use the system libgit2. This means you do not need to have libgit2 installed to build or run it. However, this does mean you have to be able to build libgit2. (Due to [recent changes](https://github.com/alexcrichton/git2-rs/commit/76f4b74aef2bc2a54906ddcbf7fbe0018936a69d) in the git2 crate, CMake is no longer needed to build it.)
 
 ## Usage
 

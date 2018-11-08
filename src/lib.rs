@@ -9,7 +9,6 @@ mod stack;
 mod commute;
 
 use std::io::Write;
-use stack::WorkingStackOptions;
 
 pub struct Config<'a> {
     pub dry_run: bool,
@@ -186,35 +185,29 @@ fn apply_hunk_to_tree<'repo>(
     path: &[u8],
 ) -> Result<git2::Tree<'repo>, failure::Error> {
     let mut treebuilder = repo.treebuilder(Some(base))?;
-    let path_str = String::from_utf8_lossy(path);
 
-    let complex_path : Vec<_> = path_str.split("/").collect();
-    if complex_path.len() > 1 {
-        let rest = complex_path[1..].join("/");
-        let (result_tree_id, entry_filemode) = {
+    // recurse into nested tree if applicable
+    if let Some(slash) = path.iter().position(|&x| x == '/' as u8) {
+        let (first, rest) = path.split_at(slash);
+        let rest = &rest[1..];
+
+        let (subtree, submode) = {
             let entry = treebuilder
-                .get(complex_path[0])?
-                .ok_or_else(|| 
-                            failure::err_msg(format!("couldn't find sub tree entry for path {}", 
-                                                     path[0])))?;
-            let tree = repo.find_tree(entry.id())
-                .map_err(|_|
-                         failure::err_msg(format!("oid for {} is not a tree", 
-                                                  path[0])))?;
-            let result_tree = apply_hunk_to_tree(repo, &tree, hunk, rest.as_bytes())?;
-            (result_tree.id(), entry.filemode())
+                .get(first)?
+                .ok_or_else(|| failure::err_msg("couldn't find tree entry in tree for path"))?;
+            (repo.find_tree(entry.id())?, entry.filemode())
         };
+        // TODO: loop instead of recursing to avoid potential stack overflow
+        let result_subtree = apply_hunk_to_tree(repo, &subtree, hunk, rest)?;
 
-        treebuilder.insert(complex_path[0], result_tree_id, entry_filemode)?;
-        return Ok(repo.find_tree(treebuilder.write()?)?)
+        treebuilder.insert(first, result_subtree.id(), submode)?;
+        return Ok(repo.find_tree(treebuilder.write()?)?);
     }
 
     let (blob, mode) = {
         let entry = treebuilder
             .get(path)?
-            .ok_or_else(|| 
-                failure::err_msg(format!("couldn't find leaf tree entry for path {}", 
-                                         String::from_utf8_lossy(path))))?;
+            .ok_or_else(|| failure::err_msg("couldn't find blob entry in tree for path"))?;
         (repo.find_blob(entry.id())?, entry.filemode())
     };
 

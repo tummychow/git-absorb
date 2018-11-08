@@ -27,7 +27,7 @@ pub fn working_stack<'repo>(
     }
 
     let mut revwalk = repo.revwalk()?;
-    revwalk.set_sorting(git2::SORT_TOPOLOGICAL);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL);
     revwalk.push_head()?;
     debug!(logger, "head pushed"; "head" => head.name());
 

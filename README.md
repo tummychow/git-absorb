@@ -33,6 +33,21 @@ Note that `git absorb` does _not_ use the system libgit2. This means you do not 
 3. If you are satisfied with the output, `git rebase -i --autosquash` to squash the `fixup!` commits into their predecessors. You can set the [`GIT_SEQUENCE_EDITOR`](https://stackoverflow.com/a/29094904) environment variable if you don't need to edit the rebase TODO file.
 4. If you are not satisfied (or if something bad happened), `git reset --soft` to the pre-absorption commit to recover your old state. (You can find the commit in question with `git reflog`.) And if you think `git absorb` is at fault, please [file an issue](https://github.com/tummychow/git-absorb/issues/new).
 
+## Configuration
+
+### Stack size
+git-absorb will only search for canditate commits to fixup within a certain range (by default 10).
+If you get an error like this
+```
+WARN stack limit reached, limit: 10
+```
+edit your local or global `.gitconfig` and add the following section
+```ini
+[absorb]
+    maxStack=50 # Or any other reasonable value for your project
+```
+
+
 ## TODO
 
 - implement force flag

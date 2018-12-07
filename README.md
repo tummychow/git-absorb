@@ -36,17 +36,18 @@ Note that `git absorb` does _not_ use the system libgit2. This means you do not 
 ## Configuration
 
 ### Stack size
-git-absorb will only search for canditate commits to fixup within a certain range (by default 10).
-If you get an error like this
+git-absorb will only search for candidate commits to fixup within a certain range (by default 10). If you get an error like this:
+
 ```
 WARN stack limit reached, limit: 10
 ```
+
 edit your local or global `.gitconfig` and add the following section
+
 ```ini
 [absorb]
     maxStack=50 # Or any other reasonable value for your project
 ```
-
 
 ## TODO
 

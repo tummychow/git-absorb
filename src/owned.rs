@@ -17,7 +17,7 @@ impl ::std::ops::Deref for Diff {
     }
 }
 impl Diff {
-    pub fn new(diff: &git2::Diff) -> Result<Diff, failure::Error> {
+    pub fn new(diff: &git2::Diff) -> Result<Self, failure::Error> {
         let mut ret = Diff {
             patches: Vec::new(),
             by_old: HashMap::new(),
@@ -63,7 +63,7 @@ pub struct Hunk {
     pub removed: Block,
 }
 impl Hunk {
-    pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<Hunk, failure::Error> {
+    pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<Self, failure::Error> {
         let (added_start, removed_start, mut added_lines, mut removed_lines) = {
             let (hunk, _size) = patch.hunk(idx)?;
             (
@@ -199,7 +199,7 @@ pub struct Patch {
     pub hunks: Vec<Hunk>,
 }
 impl Patch {
-    pub fn new(patch: &mut git2::Patch) -> Result<Patch, failure::Error> {
+    pub fn new(patch: &mut git2::Patch) -> Result<Self, failure::Error> {
         let mut ret = Patch {
             old_path: patch
                 .delta()

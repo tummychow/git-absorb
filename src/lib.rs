@@ -207,7 +207,7 @@ fn apply_hunk_to_tree<'repo>(
     let mut treebuilder = repo.treebuilder(Some(base))?;
 
     // recurse into nested tree if applicable
-    if let Some(slash) = path.iter().position(|&x| x == b'/' as u8) {
+    if let Some(slash) = path.iter().position(|&x| x == b'/') {
         let (first, rest) = path.split_at(slash);
         let rest = &rest[1..];
 
@@ -267,8 +267,7 @@ fn skip_past_nth(needle: u8, haystack: &[u8], n: usize) -> usize {
     // TODO: is fuse necessary here?
     memchr::Memchr::new(needle, haystack)
         .fuse()
-        .skip(n - 1)
-        .next()
+        .nth(n)
         .map(|x| x + 1)
-        .unwrap_or(haystack.len())
+        .unwrap_or_else(|| haystack.len())
 }

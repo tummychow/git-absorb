@@ -8,6 +8,7 @@ mod owned;
 mod stack;
 mod commute;
 
+use std::collections::HashMap;
 use std::io::Write;
 
 pub struct Config<'a> {
@@ -93,10 +94,17 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             // find the newest commit that the hunk cannot commute
             // with
             let mut dest_commit = None;
+            // Also store a count of all unique commit messages
+            let mut message_counts = HashMap::new();
+
             'commit: for &(ref commit, ref diff) in &stack {
                 let c_logger = config.logger.new(o!(
                     "commit" => commit.id().to_string(),
                 ));
+                let message_count = message_counts
+                    .entry(commit.message().unwrap_or(""))
+                    .or_insert(0);
+                *message_count += 1;
                 let next_patch = match diff.by_new(commuted_old_path) {
                     Some(patch) => patch,
                     // this commit doesn't touch the hunk's file, so
@@ -147,6 +155,11 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 }
             };
 
+            let dest_commit_id = dest_commit.id().to_string();
+            let dest_commit_locator = dest_commit
+                .message()
+                .filter(|msg| message_counts[msg] == 1)
+                .unwrap_or(&dest_commit_id);
             if !config.dry_run {
                 head_tree =
                     apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
@@ -154,7 +167,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                     Some("HEAD"),
                     &signature,
                     &signature,
-                    &format!("fixup! {}", dest_commit.id()),
+                    &format!("fixup! {}", dest_commit_locator),
                     &head_tree,
                     &[&head_commit],
                 )?)?;
@@ -163,7 +176,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 );
             } else {
                 info!(config.logger, "would have committed";
-                      "fixup" => dest_commit.id().to_string(),
+                      "fixup" => dest_commit_locator,
                       "header" => format!("-{},{} +{},{}",
                                           index_hunk.removed.start,
                                           index_hunk.removed.lines.len(),

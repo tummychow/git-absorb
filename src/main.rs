@@ -51,7 +51,8 @@ fn main() {
         } else {
             slog::Level::Info
         },
-    ).fuse();
+    )
+    .fuse();
     let mut logger = slog::Logger::root(drain, o!());
     if args.is_present("verbose") {
         logger = logger.new(o!(

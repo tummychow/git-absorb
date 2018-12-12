@@ -4,9 +4,9 @@ extern crate memchr;
 #[macro_use]
 extern crate slog;
 
+mod commute;
 mod owned;
 mod stack;
-mod commute;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -41,15 +41,18 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         let stack = stack::working_stack(&repo, base.as_ref(), config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
         for commit in &stack {
-            let diff = owned::Diff::new(&repo.diff_tree_to_tree(
-                if commit.parents().len() == 0 {
-                    None
-                } else {
-                    Some(commit.parent(0)?.tree()?)
-                }.as_ref(),
-                Some(&commit.tree()?),
-                diff_options.as_mut(),
-            )?)?;
+            let diff = owned::Diff::new(
+                &repo.diff_tree_to_tree(
+                    if commit.parents().len() == 0 {
+                        None
+                    } else {
+                        Some(commit.parent(0)?.tree()?)
+                    }
+                    .as_ref(),
+                    Some(&commit.tree()?),
+                    diff_options.as_mut(),
+                )?,
+            )?;
             trace!(config.logger, "parsed commit diff";
                    "commit" => commit.id().to_string(),
                    "diff" => format!("{:?}", diff),
@@ -61,8 +64,11 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     };
 
     let mut head_tree = repo.head()?.peel_to_tree()?;
-    let index =
-        owned::Diff::new(&repo.diff_tree_to_index(Some(&head_tree), None, diff_options.as_mut())?)?;
+    let index = owned::Diff::new(&repo.diff_tree_to_index(
+        Some(&head_tree),
+        None,
+        diff_options.as_mut(),
+    )?)?;
     trace!(config.logger, "parsed index";
            "index" => format!("{:?}", index),
     );

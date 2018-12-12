@@ -6,7 +6,8 @@ pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
 pub const MAX_STACK: usize = 10;
 
 fn max_stack(repo: &git2::Repository) -> usize {
-    match repo.config()
+    match repo
+        .config()
         .and_then(|config| config.get_i64(MAX_STACK_CONFIG_NAME))
     {
         Ok(max_stack) if max_stack > 0 => max_stack as usize,
@@ -105,13 +106,15 @@ mod tests {
         parents: &[&git2::Commit],
     ) -> git2::Commit<'repo> {
         let sig = repo.signature().unwrap();
-        let tree = repo.find_tree(repo.treebuilder(None).unwrap().write().unwrap())
+        let tree = repo
+            .find_tree(repo.treebuilder(None).unwrap().write().unwrap())
             .unwrap();
 
         repo.find_commit(
             repo.commit(Some(update_ref), &sig, &sig, message, &tree, parents)
                 .unwrap(),
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     fn empty_commit_chain<'repo>(

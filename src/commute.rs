@@ -36,13 +36,15 @@ pub fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk
             // repeated, then they commute no matter what their
             // offsets are, because they can be interleaved in any
             // order without changing the final result
-            if first.added.lines.is_empty() && second.added.lines.is_empty()
+            if first.added.lines.is_empty()
+                && second.added.lines.is_empty()
                 && uniform(first.removed.lines.iter().chain(&*second.removed.lines))
             {
                 // TODO: removed start positions probably need to be
                 // tweaked here
                 return Some((second.clone(), first.clone()));
-            } else if first.removed.lines.is_empty() && second.removed.lines.is_empty()
+            } else if first.removed.lines.is_empty()
+                && second.removed.lines.is_empty()
                 && uniform(first.added.lines.iter().chain(&*second.added.lines))
             {
                 // TODO: added start positions probably need to be
@@ -81,11 +83,11 @@ where
         // to be reverse line order (bottom to top), which also
         // happens to be reverse of the order they're stored
         .rev()
-        .fold(Some(after.clone()), |after, next|
+        .fold(Some(after.clone()), |after, next| {
             after
                 .and_then(|after| commute(next, &after))
                 .map(|(commuted_after, _)| commuted_after)
-        )
+        })
 }
 
 #[cfg(test)]

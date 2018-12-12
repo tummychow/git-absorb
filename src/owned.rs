@@ -1,8 +1,8 @@
 extern crate failure;
 extern crate git2;
 
-use std::rc::Rc;
 use std::collections::hash_map::HashMap;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct Diff {
@@ -25,8 +25,10 @@ impl Diff {
         };
 
         for (delta_idx, _delta) in diff.deltas().enumerate() {
-            let patch = Patch::new(&mut git2::Patch::from_diff(diff, delta_idx)?
-                .ok_or_else(|| failure::err_msg("got empty delta"))?)?;
+            let patch = Patch::new(
+                &mut git2::Patch::from_diff(diff, delta_idx)?
+                    .ok_or_else(|| failure::err_msg("got empty delta"))?,
+            )?;
             if ret.by_old.contains_key(&patch.old_path) {
                 // TODO: would this case be hit if the diff was put through copy detection?
                 return Err(failure::err_msg("old path already occupied"));
@@ -81,9 +83,11 @@ impl Hunk {
                     if line.num_lines() > 1 {
                         return Err(failure::err_msg("wrong number of lines in hunk"));
                     }
-                    if line.new_lineno()
+                    if line
+                        .new_lineno()
                         .ok_or_else(|| failure::err_msg("added line did not have lineno"))?
-                        as usize != added_start + added_lines.len()
+                        as usize
+                        != added_start + added_lines.len()
                     {
                         return Err(failure::err_msg("added line did not reach expected lineno"));
                     }
@@ -93,9 +97,11 @@ impl Hunk {
                     if line.num_lines() > 1 {
                         return Err(failure::err_msg("wrong number of lines in hunk"));
                     }
-                    if line.old_lineno()
+                    if line
+                        .old_lineno()
                         .ok_or_else(|| failure::err_msg("removed line did not have lineno"))?
-                        as usize != removed_start + removed_lines.len()
+                        as usize
+                        != removed_start + removed_lines.len()
                     {
                         return Err(failure::err_msg(
                             "removed line did not reach expected lineno",

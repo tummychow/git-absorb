@@ -2,6 +2,8 @@ extern crate failure;
 extern crate git2;
 extern crate slog;
 
+use std::collections::HashMap;
+
 pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
 pub const MAX_STACK: usize = 10;
 
@@ -74,6 +76,26 @@ pub fn working_stack<'repo>(
         ret.push(commit);
     }
     Ok(ret)
+}
+
+pub fn summary_counts<'repo, 'a, I>(commits: I) -> HashMap<String, u64>
+where
+    I: IntoIterator<Item = &'a git2::Commit<'repo>>,
+    // TODO: we have to use a hashmap of owned strings because the
+    // commit summary has the 'a lifetime (the commit outlives this
+    // function, but the reference to the commit does not), it would
+    // be nice if the commit summary had the 'repo lifetime instead
+    'repo: 'a,
+{
+    let mut ret = HashMap::new();
+    for commit in commits {
+        let count = ret
+            // TODO: unnecessary allocation if key already exists
+            .entry(commit.summary().unwrap_or("").to_owned())
+            .or_insert(0);
+        *count += 1;
+    }
+    ret
 }
 
 #[cfg(test)]

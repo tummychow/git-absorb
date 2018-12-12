@@ -8,7 +8,6 @@ mod commute;
 mod owned;
 mod stack;
 
-use std::collections::HashMap;
 use std::io::Write;
 
 pub struct Config<'a> {
@@ -37,7 +36,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         ret
     });
 
-    let stack: Vec<_> = {
+    let (stack, summary_counts): (Vec<_>, _) = {
         let stack = stack::working_stack(&repo, base.as_ref(), config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
         for commit in &stack {
@@ -60,7 +59,11 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             diffs.push(diff);
         }
 
-        stack.into_iter().zip(diffs.into_iter()).collect()
+        let summary_counts = stack::summary_counts(&stack);
+        (
+            stack.into_iter().zip(diffs.into_iter()).collect(),
+            summary_counts,
+        )
     };
 
     let mut head_tree = repo.head()?.peel_to_tree()?;
@@ -100,17 +103,11 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             // find the newest commit that the hunk cannot commute
             // with
             let mut dest_commit = None;
-            // Also store a count of all unique commit messages
-            let mut message_counts = HashMap::new();
 
             'commit: for &(ref commit, ref diff) in &stack {
                 let c_logger = config.logger.new(o!(
                     "commit" => commit.id().to_string(),
                 ));
-                let message_count = message_counts
-                    .entry(commit.message().unwrap_or(""))
-                    .or_insert(0);
-                *message_count += 1;
                 let next_patch = match diff.by_new(commuted_old_path) {
                     Some(patch) => patch,
                     // this commit doesn't touch the hunk's file, so
@@ -161,10 +158,14 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 }
             };
 
+            // TODO: the git2 api only supports utf8 commit messages,
+            // so it's okay to use strings instead of bytes here
+            // https://docs.rs/git2/0.7.5/src/git2/repo.rs.html#998
+            // https://libgit2.org/libgit2/#HEAD/group/commit/git_commit_create
             let dest_commit_id = dest_commit.id().to_string();
             let dest_commit_locator = dest_commit
-                .message()
-                .filter(|msg| message_counts[msg] == 1)
+                .summary()
+                .filter(|&msg| summary_counts[msg] == 1)
                 .unwrap_or(&dest_commit_id);
             if !config.dry_run {
                 head_tree =
@@ -206,7 +207,7 @@ fn apply_hunk_to_tree<'repo>(
     let mut treebuilder = repo.treebuilder(Some(base))?;
 
     // recurse into nested tree if applicable
-    if let Some(slash) = path.iter().position(|&x| x == '/' as u8) {
+    if let Some(slash) = path.iter().position(|&x| x == b'/' as u8) {
         let (first, rest) = path.split_at(slash);
         let rest = &rest[1..];
 

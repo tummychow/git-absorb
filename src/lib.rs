@@ -174,7 +174,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                     Some("HEAD"),
                     &signature,
                     &signature,
-                    &format!("fixup! {}", dest_commit_locator),
+                    &format!("fixup! {}\n", dest_commit_locator),
                     &head_tree,
                     &[&head_commit],
                 )?)?;

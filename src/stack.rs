@@ -195,18 +195,6 @@ mod tests {
     }
 
     #[test]
-    fn test_stack_stops_at_default_limit() {
-        let (_dir, repo) = init_repo();
-        let commits = empty_commit_chain(&repo, "HEAD", &[], MAX_STACK + 1);
-
-        assert_stack_matches_chain(
-            MAX_STACK,
-            &working_stack(&repo, None, &empty_slog()).unwrap(),
-            &commits,
-        );
-    }
-
-    #[test]
     fn test_stack_stops_at_configured_limit() {
         let (_dir, repo) = init_repo();
         let commits = empty_commit_chain(&repo, "HEAD", &[], MAX_STACK + 2);

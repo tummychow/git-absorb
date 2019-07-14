@@ -19,7 +19,7 @@ fn max_stack(repo: &git2::Repository) -> usize {
 
 pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
-    base: Option<&git2::Commit<'repo>>,
+    user_provided_base: Option<&str>,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>, failure::Error> {
     let head = repo.head()?;
@@ -34,9 +34,15 @@ pub fn working_stack<'repo>(
     revwalk.push_head()?;
     debug!(logger, "head pushed"; "head" => head.name());
 
-    if let Some(base) = base {
-        revwalk.hide(base.id())?;
-        debug!(logger, "commit hidden"; "commit" => base.id().to_string());
+    let base_commit = match user_provided_base {
+        // https://github.com/rust-lang/rfcs/issues/1815
+        Some(commitish) => Some(repo.find_commit(repo.revparse_single(commitish)?.id())?),
+        None => None,
+    };
+
+    if let Some(base_commit) = base_commit {
+        revwalk.hide(base_commit.id())?;
+        debug!(logger, "commit hidden"; "commit" => base_commit.id().to_string());
     } else {
         for branch in repo.branches(Some(git2::BranchType::Local))? {
             let (branch, _) = branch?;
@@ -189,7 +195,7 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, Some(&commits[0]), &empty_slog()).unwrap(),
+            &working_stack(&repo, Some(&commits[0].id().to_string()), &empty_slog()).unwrap(),
             &commits,
         );
     }

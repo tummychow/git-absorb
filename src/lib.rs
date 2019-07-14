@@ -21,12 +21,6 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
-    let base = match config.base {
-        // https://github.com/rust-lang/rfcs/issues/1815
-        Some(commitish) => Some(repo.find_commit(repo.revparse_single(commitish)?.id())?),
-        None => None,
-    };
-
     let mut diff_options = Some({
         let mut ret = git2::DiffOptions::new();
         ret.context_lines(0)
@@ -37,7 +31,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     });
 
     let (stack, summary_counts): (Vec<_>, _) = {
-        let stack = stack::working_stack(&repo, base.as_ref(), config.logger)?;
+        let stack = stack::working_stack(&repo, config.base, config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
         for commit in &stack {
             let diff = owned::Diff::new(

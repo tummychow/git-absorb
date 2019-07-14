@@ -89,17 +89,66 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             continue 'patch;
         }
 
+        let mut preceding_hunks_offset = 0isize;
+        let mut applied_hunks_offset = 0isize;
         'hunk: for index_hunk in &index_patch.hunks {
-            let mut commuted_index_hunk = index_hunk.clone();
-            let mut commuted_old_path = old_path;
-            debug!(config.logger, "commuting hunk";
-                   "path" => String::from_utf8_lossy(commuted_old_path).into_owned(),
-                   "header" => commuted_index_hunk.header(),
+            debug!(config.logger, "next hunk";
+                   "header" => index_hunk.header(),
+                   "path" => String::from_utf8_lossy(old_path).into_owned(),
             );
 
-            // find the newest commit that the hunk cannot commute
-            // with
+            // To properly handle files ("patches" in libgit2 lingo) with multiple hunks, we
+            // need to find the updated line coordinates (`header`) of the current hunk in
+            // two cases:
+            // 1) As if it were the only hunk in the index. This only involves shifting the
+            // "added" side *up* by the offset introduced by the preceding hunks:
+            let isolated_hunk = index_hunk
+                .clone()
+                .shift_added_block(-preceding_hunks_offset);
+
+            // 2) When applied on top of the previously committed hunks. This requires shifting
+            // both the "added" and the "removed" sides of the previously isolated hunk *down*
+            // by the offset of the committed hunks:
+            let hunk_to_apply = isolated_hunk
+                .clone()
+                .shift_both_blocks(applied_hunks_offset);
+
+            // The offset is the number of lines added minus the number of lines removed by a hunk:
+            let hunk_offset = index_hunk.changed_offset();
+
+            // To aid in understanding these arithmetics, here's an illustration.
+            // There are two hunks in the original patch, each adding one line ("line2" and
+            // "line5"). Assuming the first hunk (with offset = -1) was already proceesed
+            // and applied, the table shows the three versions of the patch, with line numbers
+            // on the <A>dded and <R>emoved sides for each:
+            // |----------------|-----------|------------------|
+            // |                |           | applied on top   |
+            // | original patch | isolated  | of the preceding |
+            // |----------------|-----------|------------------|
+            // | <R> <A>        | <R> <A>   | <R> <A>          |
+            // |----------------|-----------|------------------|
+            // |  1   1  line1  |  1   1    |  1   1   line1   |
+            // |  2      line2  |  2   2    |  2   2   line3   |
+            // |  3   2  line3  |  3   3    |  3   3   line4   |
+            // |  4   3  line4  |  4   4    |  4       line5   |
+            // |  5      line5  |  5        |                  |
+            // |----------------|-----------|------------------|
+            // |       So the second hunk's `header` is:       |
+            // |   -5,1 +3,0    | -5,1 +4,0 |    -4,1 +3,0     |
+            // |----------------|-----------|------------------|
+
+            debug!(config.logger, "";
+                "to apply" => hunk_to_apply.header(),
+                "to commute" => isolated_hunk.header(),
+                "preceding hunks" => format!("{}/{}", applied_hunks_offset, preceding_hunks_offset),
+            );
+
+            preceding_hunks_offset += hunk_offset;
+
+            // find the newest commit that the hunk cannot commute with
             let mut dest_commit = None;
+            let mut commuted_old_path = old_path;
+            let mut commuted_index_hunk = isolated_hunk;
 
             'commit: for &(ref commit, ref diff) in &stack {
                 let c_logger = config.logger.new(o!(
@@ -166,7 +215,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 .unwrap_or(&dest_commit_id);
             if !config.dry_run {
                 head_tree =
-                    apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
+                    apply_hunk_to_tree(&repo, &head_tree, &hunk_to_apply, &index_patch.old_path)?;
                 head_commit = repo.find_commit(repo.commit(
                     Some("HEAD"),
                     &signature,
@@ -177,13 +226,15 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 )?)?;
                 info!(config.logger, "committed";
                       "commit" => head_commit.id().to_string(),
+                      "header" => hunk_to_apply.header(),
                 );
             } else {
                 info!(config.logger, "would have committed";
                       "fixup" => dest_commit_locator,
-                      "header" => index_hunk.header(),
+                      "header" => hunk_to_apply.header(),
                 );
             }
+            applied_hunks_offset += hunk_offset;
         }
     }
 

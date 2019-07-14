@@ -188,6 +188,10 @@ impl Hunk {
         }
     }
 
+    pub fn changed_offset(&self) -> isize {
+        self.added.lines.len() as isize - self.removed.lines.len() as isize
+    }
+
     pub fn header(&self) -> String {
         format!(
             "-{},{} +{},{}",
@@ -196,6 +200,17 @@ impl Hunk {
             self.added.start,
             self.added.lines.len()
         )
+    }
+
+    pub fn shift_added_block(mut self, by: isize) -> Self {
+        self.added.start = (self.added.start as isize + by) as usize;
+        self
+    }
+
+    pub fn shift_both_blocks(mut self, by: isize) -> Self {
+        self.removed.start = (self.removed.start as isize + by) as usize;
+        self.added.start = (self.added.start as isize + by) as usize;
+        self
     }
 }
 

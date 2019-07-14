@@ -187,6 +187,16 @@ impl Hunk {
             ),
         }
     }
+
+    pub fn header(&self) -> String {
+        format!(
+            "-{},{} +{},{}",
+            self.removed.start,
+            self.removed.lines.len(),
+            self.added.start,
+            self.added.lines.len()
+        )
+    }
 }
 
 #[derive(Debug)]

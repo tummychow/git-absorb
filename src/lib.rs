@@ -92,12 +92,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             let mut commuted_old_path = index_patch.old_path.as_slice();
             debug!(config.logger, "commuting hunk";
                    "path" => String::from_utf8_lossy(commuted_old_path).into_owned(),
-                   "header" => format!("-{},{} +{},{}",
-                                     commuted_index_hunk.removed.start,
-                                     commuted_index_hunk.removed.lines.len(),
-                                     commuted_index_hunk.added.start,
-                                     commuted_index_hunk.added.lines.len(),
-                   ),
+                   "header" => commuted_index_hunk.header(),
             );
 
             // find the newest commit that the hunk cannot commute
@@ -184,12 +179,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             } else {
                 info!(config.logger, "would have committed";
                       "fixup" => dest_commit_locator,
-                      "header" => format!("-{},{} +{},{}",
-                                          index_hunk.removed.start,
-                                          index_hunk.removed.lines.len(),
-                                          index_hunk.added.start,
-                                          index_hunk.added.lines.len(),
-                      ),
+                      "header" => index_hunk.header(),
                 );
             }
         }

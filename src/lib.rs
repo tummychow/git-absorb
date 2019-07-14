@@ -80,29 +80,75 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let mut head_commit = repo.head()?.peel_to_commit()?;
 
     'patch: for index_patch in index.iter() {
+        let old_path = index_patch.new_path.as_slice();
+        if index_patch.status != git2::Delta::Modified {
+            debug!(config.logger, "skipped non-modified hunk";
+                    "path" => String::from_utf8_lossy(old_path).into_owned(),
+                    "status" => format!("{:?}", index_patch.status),
+            );
+            continue 'patch;
+        }
+
+        let mut preceding_hunks_offset = 0isize;
+        let mut applied_hunks_offset = 0isize;
         'hunk: for index_hunk in &index_patch.hunks {
-            let mut commuted_index_hunk = index_hunk.clone();
-            if index_patch.status != git2::Delta::Modified {
-                debug!(config.logger, "skipped non-modified hunk";
-                       "path" => String::from_utf8_lossy(index_patch.new_path.as_slice()).into_owned(),
-                       "status" => format!("{:?}", index_patch.status),
-                );
-                continue 'patch;
-            }
-            let mut commuted_old_path = index_patch.old_path.as_slice();
-            debug!(config.logger, "commuting hunk";
-                   "path" => String::from_utf8_lossy(commuted_old_path).into_owned(),
-                   "header" => format!("-{},{} +{},{}",
-                                     commuted_index_hunk.removed.start,
-                                     commuted_index_hunk.removed.lines.len(),
-                                     commuted_index_hunk.added.start,
-                                     commuted_index_hunk.added.lines.len(),
-                   ),
+            debug!(config.logger, "next hunk";
+                   "header" => index_hunk.header(),
+                   "path" => String::from_utf8_lossy(old_path).into_owned(),
             );
 
-            // find the newest commit that the hunk cannot commute
-            // with
+            // To properly handle files ("patches" in libgit2 lingo) with multiple hunks, we
+            // need to find the updated line coordinates (`header`) of the current hunk in
+            // two cases:
+            // 1) As if it were the only hunk in the index. This only involves shifting the
+            // "added" side *up* by the offset introduced by the preceding hunks:
+            let isolated_hunk = index_hunk
+                .clone()
+                .shift_added_block(-preceding_hunks_offset);
+
+            // 2) When applied on top of the previously committed hunks. This requires shifting
+            // both the "added" and the "removed" sides of the previously isolated hunk *down*
+            // by the offset of the committed hunks:
+            let hunk_to_apply = isolated_hunk
+                .clone()
+                .shift_both_blocks(applied_hunks_offset);
+
+            // The offset is the number of lines added minus the number of lines removed by a hunk:
+            let hunk_offset = index_hunk.changed_offset();
+
+            // To aid in understanding these arithmetics, here's an illustration.
+            // There are two hunks in the original patch, each adding one line ("line2" and
+            // "line5"). Assuming the first hunk (with offset = -1) was already proceesed
+            // and applied, the table shows the three versions of the patch, with line numbers
+            // on the <A>dded and <R>emoved sides for each:
+            // |----------------|-----------|------------------|
+            // |                |           | applied on top   |
+            // | original patch | isolated  | of the preceding |
+            // |----------------|-----------|------------------|
+            // | <R> <A>        | <R> <A>   | <R> <A>          |
+            // |----------------|-----------|------------------|
+            // |  1   1  line1  |  1   1    |  1   1   line1   |
+            // |  2      line2  |  2   2    |  2   2   line3   |
+            // |  3   2  line3  |  3   3    |  3   3   line4   |
+            // |  4   3  line4  |  4   4    |  4       line5   |
+            // |  5      line5  |  5        |                  |
+            // |----------------|-----------|------------------|
+            // |       So the second hunk's `header` is:       |
+            // |   -5,1 +3,0    | -5,1 +4,0 |    -4,1 +3,0     |
+            // |----------------|-----------|------------------|
+
+            debug!(config.logger, "";
+                "to apply" => hunk_to_apply.header(),
+                "to commute" => isolated_hunk.header(),
+                "preceding hunks" => format!("{}/{}", applied_hunks_offset, preceding_hunks_offset),
+            );
+
+            preceding_hunks_offset += hunk_offset;
+
+            // find the newest commit that the hunk cannot commute with
             let mut dest_commit = None;
+            let mut commuted_old_path = old_path;
+            let mut commuted_index_hunk = isolated_hunk;
 
             'commit: for &(ref commit, ref diff) in &stack {
                 let c_logger = config.logger.new(o!(
@@ -169,29 +215,26 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 .unwrap_or(&dest_commit_id);
             if !config.dry_run {
                 head_tree =
-                    apply_hunk_to_tree(&repo, &head_tree, index_hunk, &index_patch.old_path)?;
+                    apply_hunk_to_tree(&repo, &head_tree, &hunk_to_apply, &index_patch.old_path)?;
                 head_commit = repo.find_commit(repo.commit(
                     Some("HEAD"),
                     &signature,
                     &signature,
-                    &format!("fixup! {}", dest_commit_locator),
+                    &format!("fixup! {}\n", dest_commit_locator),
                     &head_tree,
                     &[&head_commit],
                 )?)?;
                 info!(config.logger, "committed";
                       "commit" => head_commit.id().to_string(),
+                      "header" => hunk_to_apply.header(),
                 );
             } else {
                 info!(config.logger, "would have committed";
                       "fixup" => dest_commit_locator,
-                      "header" => format!("-{},{} +{},{}",
-                                          index_hunk.removed.start,
-                                          index_hunk.removed.lines.len(),
-                                          index_hunk.added.start,
-                                          index_hunk.added.lines.len(),
-                      ),
+                      "header" => hunk_to_apply.header(),
                 );
             }
+            applied_hunks_offset += hunk_offset;
         }
     }
 
@@ -241,7 +284,7 @@ fn apply_hunk_to_tree<'repo>(
     // first, write the lines from the old content that are above the
     // hunk
     let old_content = {
-        let (pre, post) = old_content.split_at(skip_past_nth(b'\n', old_content, old_start));
+        let (pre, post) = split_lines_after(old_content, old_start);
         blobwriter.write_all(pre)?;
         post
     };
@@ -251,7 +294,7 @@ fn apply_hunk_to_tree<'repo>(
     }
     // if this hunk removed lines from the old content, those must be
     // skipped
-    let old_content = &old_content[skip_past_nth(b'\n', old_content, hunk.removed.lines.len())..];
+    let (_, old_content) = split_lines_after(old_content, hunk.removed.lines.len());
     // finally, write the remaining lines of the old content
     blobwriter.write_all(old_content)?;
 
@@ -259,15 +302,16 @@ fn apply_hunk_to_tree<'repo>(
     Ok(repo.find_tree(treebuilder.write()?)?)
 }
 
-fn skip_past_nth(needle: u8, haystack: &[u8], n: usize) -> usize {
-    if n == 0 {
-        return 0;
-    }
-
-    // TODO: is fuse necessary here?
-    memchr::Memchr::new(needle, haystack)
-        .fuse()
-        .nth(n)
-        .map(|x| x + 1)
-        .unwrap_or_else(|| haystack.len())
+/// Return slices for lines [1..n] and [n+1; ...]
+fn split_lines_after(content: &[u8], n: usize) -> (&[u8], &[u8]) {
+    let split_index = if n > 0 {
+        memchr::Memchr::new(b'\n', content)
+            .fuse() // TODO: is fuse necessary here?
+            .nth(n - 1) // the position of '\n' ending the `n`-th line
+            .map(|x| x + 1)
+            .unwrap_or_else(|| content.len())
+    } else {
+        0
+    };
+    content.split_at(split_index)
 }

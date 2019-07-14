@@ -201,8 +201,11 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 // the hunk commutes with every commit in the stack,
                 // so there is no commit to absorb it into
                 None => {
-                    warn!(config.logger, "Could not find a commit to fix up, use \
-                                          --base to increase the search range.");
+                    warn!(
+                        config.logger,
+                        "Could not find a commit to fix up, use \
+                         --base to increase the search range."
+                    );
                     continue 'hunk;
                 }
             };
@@ -242,7 +245,10 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     }
 
     if patches_considered == 0 {
-        warn!(config.logger, "No additions staged, try adding something to the index.");
+        warn!(
+            config.logger,
+            "No additions staged, try adding something to the index."
+        );
     }
 
     Ok(())

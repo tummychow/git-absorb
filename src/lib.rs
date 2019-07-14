@@ -259,7 +259,7 @@ fn skip_past_nth(needle: u8, haystack: &[u8], n: usize) -> usize {
     // TODO: is fuse necessary here?
     memchr::Memchr::new(needle, haystack)
         .fuse()
-        .nth(n)
+        .nth(n - 1)
         .map(|x| x + 1)
         .unwrap_or_else(|| haystack.len())
 }

@@ -21,6 +21,12 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
+    let stack = stack::working_stack(&repo, config.base, config.logger)?;
+    if stack.is_empty() {
+        crit!(config.logger, "No commits available to fix up, exiting");
+        return Ok(());
+    }
+
     let mut diff_options = Some({
         let mut ret = git2::DiffOptions::new();
         ret.context_lines(0)
@@ -31,7 +37,6 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     });
 
     let (stack, summary_counts): (Vec<_>, _) = {
-        let stack = stack::working_stack(&repo, config.base, config.logger)?;
         let mut diffs = Vec::with_capacity(stack.len());
         for commit in &stack {
             let diff = owned::Diff::new(
@@ -73,6 +78,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let signature = repo.signature()?;
     let mut head_commit = repo.head()?.peel_to_commit()?;
 
+    let mut patches_considered = 0usize;
     'patch: for index_patch in index.iter() {
         let old_path = index_patch.new_path.as_slice();
         if index_patch.status != git2::Delta::Modified {
@@ -82,6 +88,8 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             );
             continue 'patch;
         }
+
+        patches_considered += 1;
 
         let mut preceding_hunks_offset = 0isize;
         let mut applied_hunks_offset = 0isize;
@@ -193,7 +201,8 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
                 // the hunk commutes with every commit in the stack,
                 // so there is no commit to absorb it into
                 None => {
-                    debug!(config.logger, "could not find noncommutative commit");
+                    warn!(config.logger, "Could not find a commit to fix up, use \
+                                          --base to increase the search range.");
                     continue 'hunk;
                 }
             };
@@ -230,6 +239,10 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             }
             applied_hunks_offset += hunk_offset;
         }
+    }
+
+    if patches_considered == 0 {
+        warn!(config.logger, "No additions staged, try adding something to the index.");
     }
 
     Ok(())

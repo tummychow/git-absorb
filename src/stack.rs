@@ -61,11 +61,13 @@ pub fn working_stack<'repo>(
     }
 
     let mut ret = Vec::new();
+    let mut commits_considered = 0usize;
     let sig = repo.signature()?;
     for rev in revwalk {
+        commits_considered += 1;
         let commit = repo.find_commit(rev?)?;
         if commit.parents().len() > 1 {
-            warn!(logger, "merge commit found"; "commit" => commit.id().to_string());
+            warn!(logger, "Will not fix up past the merge commit"; "commit" => commit.id().to_string());
             break;
         }
         if commit.author().name_bytes() != sig.name_bytes()
@@ -74,12 +76,20 @@ pub fn working_stack<'repo>(
             warn!(logger, "foreign author found"; "commit" => commit.id().to_string());
             break;
         }
-        if ret.len() == max_stack(repo) {
-            warn!(logger, "stack limit reached"; "limit" => ret.len());
+        if ret.len() == max_stack(repo) && user_provided_base.is_none() {
+            warn!(logger, "stack limit reached, use --base or configure absorb.maxStack to override";
+                  "limit" => ret.len());
             break;
         }
         debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
         ret.push(commit);
+    }
+    if commits_considered == 0 {
+        if user_provided_base.is_none() {
+            warn!(logger, "Please use --base to specify a base commit.");
+        } else {
+            warn!(logger, "Please try a different --base");
+        }
     }
     Ok(ret)
 }

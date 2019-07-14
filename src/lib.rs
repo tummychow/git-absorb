@@ -80,16 +80,18 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let mut head_commit = repo.head()?.peel_to_commit()?;
 
     'patch: for index_patch in index.iter() {
+        let old_path = index_patch.new_path.as_slice();
+        if index_patch.status != git2::Delta::Modified {
+            debug!(config.logger, "skipped non-modified hunk";
+                    "path" => String::from_utf8_lossy(old_path).into_owned(),
+                    "status" => format!("{:?}", index_patch.status),
+            );
+            continue 'patch;
+        }
+
         'hunk: for index_hunk in &index_patch.hunks {
             let mut commuted_index_hunk = index_hunk.clone();
-            if index_patch.status != git2::Delta::Modified {
-                debug!(config.logger, "skipped non-modified hunk";
-                       "path" => String::from_utf8_lossy(index_patch.new_path.as_slice()).into_owned(),
-                       "status" => format!("{:?}", index_patch.status),
-                );
-                continue 'patch;
-            }
-            let mut commuted_old_path = index_patch.old_path.as_slice();
+            let mut commuted_old_path = old_path;
             debug!(config.logger, "commuting hunk";
                    "path" => String::from_utf8_lossy(commuted_old_path).into_owned(),
                    "header" => commuted_index_hunk.header(),

@@ -14,6 +14,7 @@ pub struct Config<'a> {
     pub dry_run: bool,
     pub force: bool,
     pub base: Option<&'a str>,
+    pub and_rebase: bool,
     pub logger: &'a slog::Logger,
 }
 
@@ -249,6 +250,22 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
             config.logger,
             "No additions staged, try adding something to the index."
         );
+    } else if config.and_rebase {
+        use std::process::Command;
+        // unwrap() is safe here, as we exit early if the stack is empty
+        let last_commit_in_stack = &stack.last().unwrap().0;
+        // The stack isn't supposed to have any merge commits, per the check in working_stack()
+        assert_eq!(last_commit_in_stack.parents().len(), 1);
+
+        // Use a range that is guaranteed to include all the commits we might have
+        // committed "fixup!" commits for.
+        let base_commit_sha = last_commit_in_stack.parent(0)?.id().to_string();
+        // Don't check that we have successfully absorbed everything, nor git's
+        // exit code -- as git will print helpful messages on its own.
+        Command::new("git")
+            .args(&["rebase", "--interactive", "--autosquash", &base_commit_sha])
+            .status()
+            .expect("could not run git rebase");
     }
 
     Ok(())

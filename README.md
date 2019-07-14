@@ -10,8 +10,8 @@ You have a feature branch with a few commits. Your teammate reviewed the branch 
 
 ```
 git add $FILES_YOU_FIXED
-git absorb
-git rebase -i --autosquash master
+git absorb --and-rebase
+# or: git rebase -i --autosquash master
 ```
 
 `git absorb` will automatically identify which commits are safe to modify, and which indexed changes belong to each of those commits. It will then write `fixup!` commits for each of those changes. You can check its output manually if you don't trust it, and then fold the fixups into your feature branch with git's built-in autosquash functionality.
@@ -42,7 +42,7 @@ brew install git-absorb
 ## Configuration
 
 ### Stack size
-git-absorb will only search for candidate commits to fixup within a certain range (by default 10). If you get an error like this:
+When run without `--base`, git-absorb will only search for candidate commits to fixup within a certain range (by default 10). If you get an error like this:
 
 ```
 WARN stack limit reached, limit: 10
@@ -59,7 +59,6 @@ edit your local or global `.gitconfig` and add the following section
 
 - implement force flag
 - implement remote default branch check
-- add flag to automatically run rebase after successful absorption
 - add smaller force flags to disable individual safety checks
 - stop using `failure::err_msg` and ensure all error output is actionable by the user
 - slightly more log output in the success case

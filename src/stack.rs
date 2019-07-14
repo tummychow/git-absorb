@@ -19,7 +19,8 @@ fn max_stack(repo: &git2::Repository) -> usize {
 
 pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
-    base: Option<&git2::Commit<'repo>>,
+    user_provided_base: Option<&str>,
+    force: bool,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>, failure::Error> {
     let head = repo.head()?;
@@ -34,9 +35,15 @@ pub fn working_stack<'repo>(
     revwalk.push_head()?;
     debug!(logger, "head pushed"; "head" => head.name());
 
-    if let Some(base) = base {
-        revwalk.hide(base.id())?;
-        debug!(logger, "commit hidden"; "commit" => base.id().to_string());
+    let base_commit = match user_provided_base {
+        // https://github.com/rust-lang/rfcs/issues/1815
+        Some(commitish) => Some(repo.find_commit(repo.revparse_single(commitish)?.id())?),
+        None => None,
+    };
+
+    if let Some(base_commit) = base_commit {
+        revwalk.hide(base_commit.id())?;
+        debug!(logger, "commit hidden"; "commit" => base_commit.id().to_string());
     } else {
         for branch in repo.branches(Some(git2::BranchType::Local))? {
             let (branch, _) = branch?;
@@ -55,25 +62,37 @@ pub fn working_stack<'repo>(
     }
 
     let mut ret = Vec::new();
+    let mut commits_considered = 0usize;
     let sig = repo.signature()?;
     for rev in revwalk {
+        commits_considered += 1;
         let commit = repo.find_commit(rev?)?;
         if commit.parents().len() > 1 {
-            warn!(logger, "merge commit found"; "commit" => commit.id().to_string());
+            warn!(logger, "Will not fix up past the merge commit"; "commit" => commit.id().to_string());
             break;
         }
-        if commit.author().name_bytes() != sig.name_bytes()
-            || commit.author().email_bytes() != sig.email_bytes()
+        if !force
+            && (commit.author().name_bytes() != sig.name_bytes()
+                || commit.author().email_bytes() != sig.email_bytes())
         {
-            warn!(logger, "foreign author found"; "commit" => commit.id().to_string());
+            warn!(logger, "Will not fix up past commits not authored by you, use --force to override";
+                  "commit" => commit.id().to_string());
             break;
         }
-        if ret.len() == max_stack(repo) {
-            warn!(logger, "stack limit reached"; "limit" => ret.len());
+        if ret.len() == max_stack(repo) && user_provided_base.is_none() {
+            warn!(logger, "stack limit reached, use --base or configure absorb.maxStack to override";
+                  "limit" => ret.len());
             break;
         }
         debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
         ret.push(commit);
+    }
+    if commits_considered == 0 {
+        if user_provided_base.is_none() {
+            warn!(logger, "Please use --base to specify a base commit.");
+        } else {
+            warn!(logger, "Please try a different --base");
+        }
     }
     Ok(ret)
 }
@@ -176,7 +195,7 @@ mod tests {
 
         assert_stack_matches_chain(
             1,
-            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
             &commits,
         );
     }
@@ -189,7 +208,13 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, Some(&commits[0]), &empty_slog()).unwrap(),
+            &working_stack(
+                &repo,
+                Some(&commits[0].id().to_string()),
+                false,
+                &empty_slog(),
+            )
+            .unwrap(),
             &commits,
         );
     }
@@ -205,7 +230,7 @@ mod tests {
 
         assert_stack_matches_chain(
             MAX_STACK + 1,
-            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
             &commits,
         );
     }
@@ -222,7 +247,7 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
             &new_commits,
         );
     }
@@ -240,7 +265,7 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, None, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
             &commits,
         );
     }

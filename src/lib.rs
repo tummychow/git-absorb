@@ -21,7 +21,7 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
-    let stack = stack::working_stack(&repo, config.base, config.logger)?;
+    let stack = stack::working_stack(&repo, config.base, config.force, config.logger)?;
     if stack.is_empty() {
         crit!(config.logger, "No commits available to fix up, exiting");
         return Ok(());

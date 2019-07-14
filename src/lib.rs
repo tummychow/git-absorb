@@ -233,7 +233,7 @@ fn apply_hunk_to_tree<'repo>(
     // first, write the lines from the old content that are above the
     // hunk
     let old_content = {
-        let (pre, post) = old_content.split_at(skip_past_nth(b'\n', old_content, old_start));
+        let (pre, post) = split_lines_after(old_content, old_start);
         blobwriter.write_all(pre)?;
         post
     };
@@ -243,7 +243,7 @@ fn apply_hunk_to_tree<'repo>(
     }
     // if this hunk removed lines from the old content, those must be
     // skipped
-    let old_content = &old_content[skip_past_nth(b'\n', old_content, hunk.removed.lines.len())..];
+    let (_, old_content) = split_lines_after(old_content, hunk.removed.lines.len());
     // finally, write the remaining lines of the old content
     blobwriter.write_all(old_content)?;
 
@@ -251,15 +251,16 @@ fn apply_hunk_to_tree<'repo>(
     Ok(repo.find_tree(treebuilder.write()?)?)
 }
 
-fn skip_past_nth(needle: u8, haystack: &[u8], n: usize) -> usize {
-    if n == 0 {
-        return 0;
-    }
-
-    // TODO: is fuse necessary here?
-    memchr::Memchr::new(needle, haystack)
-        .fuse()
-        .nth(n - 1)
-        .map(|x| x + 1)
-        .unwrap_or_else(|| haystack.len())
+/// Return slices for lines [1..n] and [n+1; ...]
+fn split_lines_after(content: &[u8], n: usize) -> (&[u8], &[u8]) {
+    let split_index = if n > 0 {
+        memchr::Memchr::new(b'\n', content)
+            .fuse() // TODO: is fuse necessary here?
+            .nth(n - 1) // the position of '\n' ending the `n`-th line
+            .map(|x| x + 1)
+            .unwrap_or_else(|| content.len())
+    } else {
+        0
+    };
+    content.split_at(split_index)
 }

@@ -1,6 +1,6 @@
 extern crate failure;
 
-use owned;
+use crate::owned;
 
 /// Tests if all elements of the iterator are equal to each other.
 ///

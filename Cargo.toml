@@ -8,6 +8,7 @@ homepage = "https://github.com/tummychow/git-absorb"
 repository = "https://github.com/tummychow/git-absorb"
 readme = "README.md"
 license = "BSD-3-Clause"
+edition = "2018"
 
 include = [
     "**/*.rs",

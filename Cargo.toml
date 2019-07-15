@@ -8,6 +8,7 @@ homepage = "https://github.com/tummychow/git-absorb"
 repository = "https://github.com/tummychow/git-absorb"
 readme = "README.md"
 license = "BSD-3-Clause"
+edition = "2018"
 
 include = [
     "**/*.rs",
@@ -20,7 +21,7 @@ name = "git-absorb"
 path = "src/main.rs"
 
 [dependencies.git2]
-version = "~0.7"
+version = "~0.9"
 default-features = false
 
 [dependencies]

@@ -39,6 +39,13 @@ fn main() {
                 .long("verbose")
                 .takes_value(false),
         )
+        .arg(
+            clap::Arg::with_name("and-rebase")
+                .help("Run rebase if successful")
+                .short("r")
+                .long("and-rebase")
+                .takes_value(false),
+        )
         .get_matches();
 
     let decorator = slog_term::TermDecorator::new().build();
@@ -65,6 +72,7 @@ fn main() {
         dry_run: args.is_present("dry-run"),
         force: args.is_present("force"),
         base: args.value_of("base"),
+        and_rebase: args.is_present("and-rebase"),
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

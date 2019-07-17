@@ -63,7 +63,7 @@ pub fn working_stack<'repo>(
 
     let mut ret = Vec::new();
     let mut commits_considered = 0usize;
-    let sig = repo.signature()?;
+    let sig = repo.signature();
     for rev in revwalk {
         commits_considered += 1;
         let commit = repo.find_commit(rev?)?;
@@ -71,13 +71,15 @@ pub fn working_stack<'repo>(
             warn!(logger, "Will not fix up past the merge commit"; "commit" => commit.id().to_string());
             break;
         }
-        if !force
-            && (commit.author().name_bytes() != sig.name_bytes()
-                || commit.author().email_bytes() != sig.email_bytes())
-        {
-            warn!(logger, "Will not fix up past commits not authored by you, use --force to override";
-                  "commit" => commit.id().to_string());
-            break;
+        if let Ok(ref sig) = sig {
+            if !force
+                && (commit.author().name_bytes() != sig.name_bytes()
+                    || commit.author().email_bytes() != sig.email_bytes())
+            {
+                warn!(logger, "Will not fix up past commits not authored by you, use --force to override";
+                      "commit" => commit.id().to_string());
+                break;
+            }
         }
         if ret.len() == max_stack(repo) && user_provided_base.is_none() {
             warn!(logger, "stack limit reached, use --base or configure absorb.maxStack to override";

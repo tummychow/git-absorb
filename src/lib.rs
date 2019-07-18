@@ -76,7 +76,9 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
            "index" => format!("{:?}", index),
     );
 
-    let signature = repo.signature()?;
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("nobody", "nobody@example.com"))?;
     let mut head_commit = repo.head()?.peel_to_commit()?;
 
     let mut patches_considered = 0usize;

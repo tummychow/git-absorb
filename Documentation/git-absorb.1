@@ -1,0 +1,197 @@
+'\" t
+.\"     Title: git-absorb
+.\"    Author: [see the "AUTHOR" section]
+.\" Generator: DocBook XSL Stylesheets v1.79.1 <http://docbook.sf.net/>
+.\"      Date: 10/18/2019
+.\"    Manual: git absorb
+.\"    Source: git-absorb 0.5.0
+.\"  Language: English
+.\"
+.TH "GIT\-ABSORB" "1" "10/18/2019" "git\-absorb 0\&.5\&.0" "git absorb"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+git-absorb \- Automatically absorb staged changes into your current branch
+.SH "SYNOPSIS"
+.sp
+.nf
+\fIgit absorb\fR [FLAGS] [OPTIONS]
+.fi
+.SH "DESCRIPTION"
+.sp
+You have a feature branch with a few commits\&. Your teammate reviewed the branch and pointed out a few bugs\&. You have fixes for the bugs, but you don\(cqt want to shove them all into an opaque commit that says fixes, because you believe in atomic commits\&. Instead of manually finding commit SHAs for git commit \-\-fixup, or running a manual interactive rebase, do this:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+$ git add $FILES_YOU_FIXED
+
+$ git absorb \-\-and\-rebase
+  (or)
+$ git absorb
+$ git rebase \-i \-\-autosquash master
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+git absorb will automatically identify which commits are safe to modify, and which indexed changes belong to each of those commits\&. It will then write fixup! commits for each of those changes\&. You can check its output manually if you don\(cqt trust it, and then fold the fixups into your feature branch with git\(cqs built\-in autosquash functionality\&.
+.SH "FLAGS"
+.PP
+\-r, \-\-and\-rebase
+.RS 4
+Run rebase if successful
+.RE
+.PP
+\-n, \-\-dry\-run
+.RS 4
+Don\(cqt make any actual changes
+.RE
+.PP
+\-f, \-\-force
+.RS 4
+Skip safety checks
+.RE
+.PP
+\-h, \-\-help
+.RS 4
+Prints help information
+.RE
+.PP
+\-V, \-\-version
+.RS 4
+Prints version information
+.RE
+.PP
+\-v, \-\-verbose
+.RS 4
+Display more output
+.RE
+.SH "OPTIONS"
+.PP
+\-b <base>, \-\-base <base>
+.RS 4
+Use this commit as the base of the absorb stack
+.RE
+.SH "USAGE"
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 1.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  1." 4.2
+.\}
+git add
+any changes that you want to absorb\&. By design,
+git absorb
+will only consider content in the git index\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 2.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  2." 4.2
+.\}
+git absorb\&. This will create a sequence of commits on
+HEAD\&. Each commit will have a
+fixup!
+message indicating the message (if unique) or SHA of the commit it should be squashed into\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 3.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  3." 4.2
+.\}
+If you are satisfied with the output,
+git rebase \-i \-\-autosquash
+to squash the
+fixup!
+commits into their predecessors\&. You can set the [GIT_SEQUENCE_EDITOR][] environment variable if you don\(cqt need to edit the rebase TODO file\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 4.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  4." 4.2
+.\}
+If you are not satisfied (or if something bad happened),
+git reset \-\-soft
+to the pre\-absorption commit to recover your old state\&. (You can find the commit in question with
+git reflog\&.) And if you think
+git absorb
+is at fault, please [file an issue][]\&.
+.RE
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+[`GIT_SEQUENCE_EDITOR`]: https://stackoverflow\&.com/a/29094904
+[file an issue]: https://github\&.com/tummychow/git\-absorb/issues/new
+.fi
+.if n \{\
+.RE
+.\}
+.SH "CONFIGURATION"
+.SS "STACK SIZE"
+.sp
+When run without \-\-base, git\-absorb will only search for candidate commits to fixup within a certain range (by default 10)\&. If you get an error like this:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+WARN stack limit reached, limit: 10
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+edit your local or global \&.gitconfig and add the following section:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+[absorb]
+    maxStack=50 # Or any other reasonable value for your project
+.fi
+.if n \{\
+.RE
+.\}
+.SH "GITHUB PROJECT"
+.sp
+https://github\&.com/tummychow/git\-absorb
+.SH "AUTHOR"
+.sp
+Stephen Jung <tummychow511@gmail\&.com>

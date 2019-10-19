@@ -1,0 +1,130 @@
+:man source:   git-absorb
+:man version:  0.5.0
+:man manual:   git absorb
+
+git-absorb(1)
+=============
+
+NAME
+----
+git-absorb - Automatically absorb staged changes into your current branch
+
+SYNOPSIS
+--------
+[verse]
+'git absorb' [FLAGS] [OPTIONS]
+
+DESCRIPTION
+-----------
+
+You have a feature branch with a few commits. Your teammate reviewed the
+branch and pointed out a few bugs. You have fixes for the bugs, but you
+don't want to shove them all into an opaque commit that says `fixes`,
+because you believe in atomic commits. Instead of manually finding commit
+SHAs for `git commit --fixup`, or running a manual interactive rebase, do
+this:
+
+.............................................................................
+$ git add $FILES_YOU_FIXED
+
+$ git absorb --and-rebase
+  (or)
+$ git absorb
+$ git rebase -i --autosquash master
+.............................................................................
+
+`git absorb` will automatically identify which commits are safe to modify,
+and which indexed changes belong to each of those commits. It will then
+write `fixup!` commits for each of those changes. You can check its output
+manually if you don't trust it, and then fold the fixups into your feature
+branch with git's built-in autosquash functionality.
+
+FLAGS
+-----
+
+-r::
+--and-rebase::
+        Run rebase if successful
+
+-n::
+--dry-run::
+        Don't make any actual changes
+
+-f::
+--force::
+        Skip safety checks
+
+-h::
+--help::
+        Prints help information
+
+-V::
+--version::
+        Prints version information
+
+-v::
+--verbose::
+        Display more output
+
+OPTIONS
+-------
+
+-b <base>::
+--base <base>::
+        Use this commit as the base of the absorb stack
+
+USAGE
+-----
+
+1. `git add` any changes that you want to absorb. By design, `git absorb`
+will only consider content in the git index.
+
+2. `git absorb`. This will create a sequence of commits on `HEAD`. Each
+commit will have a `fixup!` message indicating the message (if unique) or
+SHA of the commit it should be squashed into.
+
+3. If you are satisfied with the output, `git rebase -i --autosquash` to
+squash the `fixup!` commits into their predecessors. You can set the
+[GIT_SEQUENCE_EDITOR][] environment variable if you don't need to edit
+the rebase TODO file.
+
+4. If you are not satisfied (or if something bad happened), `git reset
+--soft` to the pre-absorption commit to recover your old state. (You can
+find the commit in question with `git reflog`.) And if you think `git
+absorb` is at fault, please [file an issue][].
+
+.............................................................................
+[GIT_SEQUENCE_EDITOR]: https://stackoverflow.com/a/29094904
+[file an issue]: https://github.com/tummychow/git-absorb/issues/new
+.............................................................................
+
+CONFIGURATION
+-------------
+
+STACK SIZE
+~~~~~~~~~~
+
+When run without `--base`, git-absorb will only search for candidate
+commits to fixup within a certain range (by default 10). If you get an
+error like this:
+
+.............................................................................
+WARN stack limit reached, limit: 10
+.............................................................................
+
+edit your local or global `.gitconfig` and add the following section:
+
+.............................................................................
+[absorb]
+    maxStack=50 # Or any other reasonable value for your project
+.............................................................................
+
+GITHUB PROJECT
+--------------
+
+https://github.com/tummychow/git-absorb
+
+AUTHOR
+------
+
+Stephen Jung <tummychow511@gmail.com>

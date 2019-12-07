@@ -257,17 +257,24 @@ pub fn run(config: &Config) -> Result<(), failure::Error> {
         // unwrap() is safe here, as we exit early if the stack is empty
         let last_commit_in_stack = &stack.last().unwrap().0;
         // The stack isn't supposed to have any merge commits, per the check in working_stack()
-        assert_eq!(last_commit_in_stack.parents().len(), 1);
+        let number_of_parents = last_commit_in_stack.parents().len();
+        assert!(number_of_parents <= 1);
 
-        // Use a range that is guaranteed to include all the commits we might have
-        // committed "fixup!" commits for.
-        let base_commit_sha = last_commit_in_stack.parent(0)?.id().to_string();
+        let mut command = Command::new("git");
+        command.args(&["rebase", "--interactive", "--autosquash"]);
+
+        if number_of_parents == 0 {
+            command.arg("--root");
+        } else {
+            // Use a range that is guaranteed to include all the commits we might have
+            // committed "fixup!" commits for.
+            let base_commit_sha = last_commit_in_stack.parent(0)?.id().to_string();
+            command.arg(&base_commit_sha);
+        }
+
         // Don't check that we have successfully absorbed everything, nor git's
         // exit code -- as git will print helpful messages on its own.
-        Command::new("git")
-            .args(&["rebase", "--interactive", "--autosquash", &base_commit_sha])
-            .status()
-            .expect("could not run git rebase");
+        command.status().expect("could not run git rebase");
     }
 
     Ok(())

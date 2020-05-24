@@ -26,11 +26,14 @@ default-features = false
 
 [dependencies]
 clap = "~2.30"
-slog = "~2.1"
-slog-term = "~2.3"
-slog-async = "~2.2"
+slog = "~2.5"
+slog-term = "~2.5"
+slog-async = "~2.5"
 failure = "~0.1"
 memchr = "~2.0"
+
+[patch.crates-io]
+slog-term = { git = "https://github.com/tummychow/term", branch = "fallback-no-color" }
 
 [dev-dependencies]
 tempdir = "~0.3"

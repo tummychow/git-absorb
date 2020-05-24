@@ -33,7 +33,7 @@ failure = "~0.1"
 memchr = "~2.0"
 
 [patch.crates-io]
-slog-term = { git = "https://github.com/tummychow/term", branch = "fallback-no-color" }
+slog-term = { git = "https://github.com/slog-rs/term", rev = "1a1f6ecaec82c6ade58806e6b315a1e888d9c2b4" }
 
 [dev-dependencies]
 tempdir = "~0.3"

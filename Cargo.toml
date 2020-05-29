@@ -1,6 +1,6 @@
 [package]
 name = "git-absorb"
-version = "0.6.2"
+version = "0.6.3"
 
 authors = ["Stephen Jung <tummychow511@gmail.com>"]
 description = "git commit --fixup, but automatic"

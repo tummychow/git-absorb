@@ -27,13 +27,10 @@ default-features = false
 [dependencies]
 clap = "~2.30"
 slog = "~2.5"
-slog-term = "~2.5"
+slog-term = "~2.6"
 slog-async = "~2.5"
 failure = "~0.1"
 memchr = "~2.0"
-
-[patch.crates-io]
-slog-term = { git = "https://github.com/slog-rs/term", rev = "1a1f6ecaec82c6ade58806e6b315a1e888d9c2b4" }
 
 [dev-dependencies]
 tempdir = "~0.3"

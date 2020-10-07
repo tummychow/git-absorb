@@ -1,7 +1,3 @@
-extern crate failure;
-extern crate git2;
-extern crate slog;
-
 use std::collections::HashMap;
 
 pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
@@ -31,9 +27,9 @@ pub fn working_stack<'repo>(
     }
 
     let mut revwalk = repo.revwalk()?;
-    revwalk.set_sorting(git2::Sort::TOPOLOGICAL);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL)?;
     revwalk.push_head()?;
-    revwalk.simplify_first_parent();
+    revwalk.simplify_first_parent()?;
     debug!(logger, "head pushed"; "head" => head.name());
 
     let base_commit = match user_provided_base {
@@ -122,7 +118,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    extern crate tempdir;
+    use tempfile;
 
     use super::*;
 
@@ -130,9 +126,9 @@ mod tests {
         slog::Logger::root(slog::Discard, o!())
     }
 
-    fn init_repo() -> (tempdir::TempDir, git2::Repository) {
+    fn init_repo() -> (tempfile::TempDir, git2::Repository) {
         // the repo will be deleted when the tempdir gets dropped
-        let dir = tempdir::TempDir::new("git-absorb").unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
         // TODO: use in-memory ODB instead (blocked on git2 support)
         let repo = git2::Repository::init(&dir).unwrap();
 

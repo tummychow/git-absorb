@@ -1,6 +1,3 @@
-extern crate failure;
-extern crate git2;
-extern crate memchr;
 #[macro_use]
 extern crate slog;
 

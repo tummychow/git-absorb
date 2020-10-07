@@ -21,16 +21,16 @@ name = "git-absorb"
 path = "src/main.rs"
 
 [dependencies.git2]
-version = "~0.9"
+version = "~0.13"
 default-features = false
 
 [dependencies]
-clap = "~2.30"
+clap = "~2.33"
 slog = "~2.5"
 slog-term = "~2.6"
 slog-async = "~2.5"
 failure = "~0.1"
-memchr = "~2.0"
+memchr = "~2.3"
 
 [dev-dependencies]
-tempdir = "~0.3"
+tempfile = "~3.1"

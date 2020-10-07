@@ -1,10 +1,8 @@
 #[macro_use]
 extern crate clap;
-extern crate git_absorb;
+
 #[macro_use]
 extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
 
 use slog::Drain;
 

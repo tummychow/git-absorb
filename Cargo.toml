@@ -25,7 +25,7 @@ version = "~0.13"
 default-features = false
 
 [dependencies]
-clap = "~2.30"
+clap = "~2.33"
 slog = "~2.5"
 slog-term = "~2.6"
 slog-async = "~2.5"

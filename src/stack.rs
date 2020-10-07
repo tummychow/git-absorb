@@ -118,7 +118,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tempdir;
+    use tempfile;
 
     use super::*;
 
@@ -126,9 +126,9 @@ mod tests {
         slog::Logger::root(slog::Discard, o!())
     }
 
-    fn init_repo() -> (tempdir::TempDir, git2::Repository) {
+    fn init_repo() -> (tempfile::TempDir, git2::Repository) {
         // the repo will be deleted when the tempdir gets dropped
-        let dir = tempdir::TempDir::new("git-absorb").unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
         // TODO: use in-memory ODB instead (blocked on git2 support)
         let repo = git2::Repository::init(&dir).unwrap();
 

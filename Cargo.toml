@@ -33,4 +33,4 @@ failure = "~0.1"
 memchr = "~2.3"
 
 [dev-dependencies]
-tempdir = "~0.3"
+tempfile = "~3.1"

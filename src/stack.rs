@@ -1,7 +1,3 @@
-extern crate failure;
-extern crate git2;
-extern crate slog;
-
 use std::collections::HashMap;
 
 pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
@@ -122,7 +118,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    extern crate tempdir;
+    use tempdir;
 
     use super::*;
 

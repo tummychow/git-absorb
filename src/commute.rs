@@ -1,5 +1,3 @@
-extern crate failure;
-
 use crate::owned;
 
 /// Tests if all elements of the iterator are equal to each other.

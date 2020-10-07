@@ -31,9 +31,9 @@ pub fn working_stack<'repo>(
     }
 
     let mut revwalk = repo.revwalk()?;
-    revwalk.set_sorting(git2::Sort::TOPOLOGICAL);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL)?;
     revwalk.push_head()?;
-    revwalk.simplify_first_parent();
+    revwalk.simplify_first_parent()?;
     debug!(logger, "head pushed"; "head" => head.name());
 
     let base_commit = match user_provided_base {

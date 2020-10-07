@@ -21,7 +21,7 @@ name = "git-absorb"
 path = "src/main.rs"
 
 [dependencies.git2]
-version = "~0.9"
+version = "~0.13"
 default-features = false
 
 [dependencies]

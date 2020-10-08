@@ -1,3 +1,5 @@
+use anyhow::{anyhow, Result};
+
 use std::collections::HashMap;
 
 pub const MAX_STACK_CONFIG_NAME: &str = "absorb.maxStack";
@@ -18,12 +20,12 @@ pub fn working_stack<'repo>(
     user_provided_base: Option<&str>,
     force: bool,
     logger: &slog::Logger,
-) -> Result<Vec<git2::Commit<'repo>>, failure::Error> {
+) -> Result<Vec<git2::Commit<'repo>>> {
     let head = repo.head()?;
     debug!(logger, "head found"; "head" => head.name());
 
     if !head.is_branch() {
-        return Err(failure::err_msg("HEAD is not a branch"));
+        return Err(anyhow!("HEAD is not a branch"));
     }
 
     let mut revwalk = repo.revwalk()?;

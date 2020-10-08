@@ -1,3 +1,5 @@
+use anyhow::{anyhow, Result};
+
 use std::collections::hash_map::HashMap;
 use std::rc::Rc;
 
@@ -14,7 +16,7 @@ impl ::std::ops::Deref for Diff {
     }
 }
 impl Diff {
-    pub fn new(diff: &git2::Diff) -> Result<Self, failure::Error> {
+    pub fn new(diff: &git2::Diff) -> Result<Self> {
         let mut ret = Diff {
             patches: Vec::new(),
             by_old: HashMap::new(),
@@ -24,15 +26,15 @@ impl Diff {
         for (delta_idx, _delta) in diff.deltas().enumerate() {
             let patch = Patch::new(
                 &mut git2::Patch::from_diff(diff, delta_idx)?
-                    .ok_or_else(|| failure::err_msg("got empty delta"))?,
+                    .ok_or_else(|| anyhow!("got empty delta"))?,
             )?;
             if ret.by_old.contains_key(&patch.old_path) {
                 // TODO: would this case be hit if the diff was put through copy detection?
-                return Err(failure::err_msg("old path already occupied"));
+                return Err(anyhow!("old path already occupied"));
             }
             ret.by_old.insert(patch.old_path.clone(), ret.patches.len());
             if ret.by_new.contains_key(&patch.new_path) {
-                return Err(failure::err_msg("new path already occupied"));
+                return Err(anyhow!("new path already occupied"));
             }
             ret.by_new.insert(patch.new_path.clone(), ret.patches.len());
             ret.patches.push(patch);
@@ -60,7 +62,7 @@ pub struct Hunk {
     pub removed: Block,
 }
 impl Hunk {
-    pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<Self, failure::Error> {
+    pub fn new(patch: &mut git2::Patch, idx: usize) -> Result<Self> {
         let (added_start, removed_start, mut added_lines, mut removed_lines) = {
             let (hunk, _size) = patch.hunk(idx)?;
             (
@@ -78,62 +80,55 @@ impl Hunk {
             match line.origin() {
                 '+' => {
                     if line.num_lines() > 1 {
-                        return Err(failure::err_msg("wrong number of lines in hunk"));
+                        return Err(anyhow!("wrong number of lines in hunk"));
                     }
                     if line
                         .new_lineno()
-                        .ok_or_else(|| failure::err_msg("added line did not have lineno"))?
+                        .ok_or_else(|| anyhow!("added line did not have lineno"))?
                         as usize
                         != added_start + added_lines.len()
                     {
-                        return Err(failure::err_msg("added line did not reach expected lineno"));
+                        return Err(anyhow!("added line did not reach expected lineno"));
                     }
                     added_lines.push(Vec::from(line.content()))
                 }
                 '-' => {
                     if line.num_lines() > 1 {
-                        return Err(failure::err_msg("wrong number of lines in hunk"));
+                        return Err(anyhow!("wrong number of lines in hunk"));
                     }
                     if line
                         .old_lineno()
-                        .ok_or_else(|| failure::err_msg("removed line did not have lineno"))?
+                        .ok_or_else(|| anyhow!("removed line did not have lineno"))?
                         as usize
                         != removed_start + removed_lines.len()
                     {
-                        return Err(failure::err_msg(
-                            "removed line did not reach expected lineno",
-                        ));
+                        return Err(anyhow!("removed line did not reach expected lineno",));
                     }
                     removed_lines.push(Vec::from(line.content()))
                 }
                 '>' => {
                     if !removed_trailing_newline {
-                        return Err(failure::err_msg("removed nneof was already detected"));
+                        return Err(anyhow!("removed nneof was already detected"));
                     };
                     removed_trailing_newline = false
                 }
                 '<' => {
                     if !added_trailing_newline {
-                        return Err(failure::err_msg("added nneof was already detected"));
+                        return Err(anyhow!("added nneof was already detected"));
                     };
                     added_trailing_newline = false
                 }
-                _ => {
-                    return Err(failure::err_msg(format!(
-                        "unknown line type {:?}",
-                        line.origin()
-                    )))
-                }
+                _ => return Err(anyhow!("unknown line type {:?}", line.origin())),
             };
         }
 
         {
             let (hunk, _size) = patch.hunk(idx)?;
             if added_lines.len() != hunk.new_lines() as usize {
-                return Err(failure::err_msg("hunk added block size mismatch"));
+                return Err(anyhow!("hunk added block size mismatch"));
             }
             if removed_lines.len() != hunk.old_lines() as usize {
-                return Err(failure::err_msg("hunk removed block size mismatch"));
+                return Err(anyhow!("hunk removed block size mismatch"));
             }
         }
 
@@ -221,27 +216,27 @@ pub struct Patch {
     pub hunks: Vec<Hunk>,
 }
 impl Patch {
-    pub fn new(patch: &mut git2::Patch) -> Result<Self, failure::Error> {
+    pub fn new(patch: &mut git2::Patch) -> Result<Self> {
         let mut ret = Patch {
             old_path: patch
                 .delta()
                 .old_file()
                 .path_bytes()
                 .map(Vec::from)
-                .ok_or_else(|| failure::err_msg("delta with empty old path"))?,
+                .ok_or_else(|| anyhow!("delta with empty old path"))?,
             old_id: patch.delta().old_file().id(),
             new_path: patch
                 .delta()
                 .new_file()
                 .path_bytes()
                 .map(Vec::from)
-                .ok_or_else(|| failure::err_msg("delta with empty new path"))?,
+                .ok_or_else(|| anyhow!("delta with empty new path"))?,
             new_id: patch.delta().new_file().id(),
             status: patch.delta().status(),
             hunks: Vec::with_capacity(patch.num_hunks()),
         };
         if patch.delta().nfiles() < 1 || patch.delta().nfiles() > 2 {
-            return Err(failure::err_msg("delta with multiple files"));
+            return Err(anyhow!("delta with multiple files"));
         }
 
         for idx in 0..patch.num_hunks() {

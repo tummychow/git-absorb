@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate slog;
+use anyhow::{anyhow, Result};
 
 mod commute;
 mod owned;
@@ -15,7 +16,7 @@ pub struct Config<'a> {
     pub logger: &'a slog::Logger,
 }
 
-pub fn run(config: &Config) -> Result<(), failure::Error> {
+pub fn run(config: &Config) -> Result<()> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
@@ -282,7 +283,7 @@ fn apply_hunk_to_tree<'repo>(
     base: &git2::Tree,
     hunk: &owned::Hunk,
     path: &[u8],
-) -> Result<git2::Tree<'repo>, failure::Error> {
+) -> Result<git2::Tree<'repo>> {
     let mut treebuilder = repo.treebuilder(Some(base))?;
 
     // recurse into nested tree if applicable
@@ -293,7 +294,7 @@ fn apply_hunk_to_tree<'repo>(
         let (subtree, submode) = {
             let entry = treebuilder
                 .get(first)?
-                .ok_or_else(|| failure::err_msg("couldn't find tree entry in tree for path"))?;
+                .ok_or_else(|| anyhow!("couldn't find tree entry in tree for path"))?;
             (repo.find_tree(entry.id())?, entry.filemode())
         };
         // TODO: loop instead of recursing to avoid potential stack overflow
@@ -306,7 +307,7 @@ fn apply_hunk_to_tree<'repo>(
     let (blob, mode) = {
         let entry = treebuilder
             .get(path)?
-            .ok_or_else(|| failure::err_msg("couldn't find blob entry in tree for path"))?;
+            .ok_or_else(|| anyhow!("couldn't find blob entry in tree for path"))?;
         (repo.find_blob(entry.id())?, entry.filemode())
     };
 

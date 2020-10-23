@@ -26,11 +26,16 @@ Then `cargo install git-absorb`. Make sure that `$CARGO_HOME/bin` is on your `$P
 
 Note that `git absorb` does _not_ use the system libgit2. This means you do not need to have libgit2 installed to build or run it. However, this does mean you have to be able to build libgit2. (Due to [recent changes](https://github.com/alexcrichton/git2-rs/commit/76f4b74aef2bc2a54906ddcbf7fbe0018936a69d) in the git2 crate, CMake is no longer needed to build it.)
 
-There is also a Homebrew option.
+Alternatively, `git absorb` is available in the following system package managers:
 
-```
-brew install git-absorb
-```
+| Repository                  | Command                                      |
+| --------------------------- | -------------------------------------------- |
+| AUR                         | `yay -S git-absorb`                          |
+| DPorts                      | `pkg install git-absorb`                     |
+| FreeBSD Ports               | `pkg install git-absorb`                     |
+| Homebrew and Linuxbrew      | `brew install git-absorb`                    |
+| nixpkgs stable and unstable | `nix-env -iA nixpkgs.gitAndTools.git-absorb` |
+| Void Linux                  | `xbps-install -S git-absorb`                 |
 
 ## Usage
 
@@ -42,6 +47,7 @@ brew install git-absorb
 ## Configuration
 
 ### Stack size
+
 When run without `--base`, git-absorb will only search for candidate commits to fixup within a certain range (by default 10). If you get an error like this:
 
 ```

@@ -49,7 +49,7 @@ fn main() {
         .arg(
             clap::Arg::with_name("gen-completions")
                 .help("Generate completions")
-                .long("gen")
+                .long("gen-completions")
                 .takes_value(true)
                 .possible_values(&["bash", "fish", "zsh", "powershell", "elvish"]),
         );

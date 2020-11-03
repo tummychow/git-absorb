@@ -4,7 +4,9 @@ extern crate clap;
 #[macro_use]
 extern crate slog;
 
+use clap::Shell;
 use slog::Drain;
+use std::io;
 
 fn main() {
     let args = app_from_crate!()
@@ -44,7 +46,38 @@ fn main() {
                 .long("and-rebase")
                 .takes_value(false),
         )
-        .get_matches();
+        .arg(
+            clap::Arg::with_name("gen-completions")
+                .help("Generate completions")
+                .long("gen-completions")
+                .takes_value(true)
+                .possible_values(&["bash", "fish", "zsh", "powershell", "elvish"]),
+        );
+    let mut args_clone = args.clone();
+    let args = args.get_matches();
+
+    if let Some(shell) = args.value_of("gen-completions") {
+        let app_name = "git-absorb";
+        match shell {
+            "bash" => {
+                args_clone.gen_completions_to(app_name, Shell::Bash, &mut io::stdout());
+            }
+            "fish" => {
+                args_clone.gen_completions_to(app_name, Shell::Fish, &mut io::stdout());
+            }
+            "zsh" => {
+                args_clone.gen_completions_to(app_name, Shell::Zsh, &mut io::stdout());
+            }
+            "powershell" => {
+                args_clone.gen_completions_to(app_name, Shell::PowerShell, &mut io::stdout());
+            }
+            "elvish" => {
+                args_clone.gen_completions_to(app_name, Shell::Elvish, &mut io::stdout());
+            }
+            _ => unreachable!(),
+        }
+        return;
+    }
 
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();

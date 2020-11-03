@@ -34,18 +34,14 @@ pub fn commute(first: &owned::Hunk, second: &owned::Hunk) -> Option<(owned::Hunk
             // repeated, then they commute no matter what their
             // offsets are, because they can be interleaved in any
             // order without changing the final result
-            if first.added.lines.is_empty()
+            if (first.added.lines.is_empty()
                 && second.added.lines.is_empty()
-                && uniform(first.removed.lines.iter().chain(&*second.removed.lines))
+                && uniform(first.removed.lines.iter().chain(&*second.removed.lines)))
+                || (first.removed.lines.is_empty()
+                    && second.removed.lines.is_empty()
+                    && uniform(first.added.lines.iter().chain(&*second.added.lines)))
             {
-                // TODO: removed start positions probably need to be
-                // tweaked here
-                return Some((second.clone(), first.clone()));
-            } else if first.removed.lines.is_empty()
-                && second.removed.lines.is_empty()
-                && uniform(first.added.lines.iter().chain(&*second.added.lines))
-            {
-                // TODO: added start positions probably need to be
+                // TODO: removed/added start positions probably need to be
                 // tweaked here
                 return Some((second.clone(), first.clone()));
             }
@@ -138,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn test_commute_interleave() {
+    fn test_commute_trivial_add() {
         let mut line = ::std::iter::repeat(b"bar\n".to_vec());
         let hunk1 = owned::Hunk {
             added: owned::Block {
@@ -168,6 +164,39 @@ mod tests {
         let (new1, new2) = commute(&hunk1, &hunk2).unwrap();
         assert_eq!(new1.added.lines.len(), 2);
         assert_eq!(new2.added.lines.len(), 4);
+    }
+
+    #[test]
+    fn test_commute_trivial_remove() {
+        let mut line = ::std::iter::repeat(b"bar\n".to_vec());
+        let hunk1 = owned::Hunk {
+            added: owned::Block {
+                start: 1,
+                lines: Rc::new(vec![]),
+                trailing_newline: true,
+            },
+            removed: owned::Block {
+                start: 4,
+                lines: Rc::new((&mut line).take(4).collect::<Vec<_>>()),
+                trailing_newline: true,
+            },
+        };
+        let hunk2 = owned::Hunk {
+            added: owned::Block {
+                start: 1,
+                lines: Rc::new(vec![]),
+                trailing_newline: true,
+            },
+            removed: owned::Block {
+                start: 2,
+                lines: Rc::new((&mut line).take(2).collect::<Vec<_>>()),
+                trailing_newline: true,
+            },
+        };
+
+        let (new1, new2) = commute(&hunk1, &hunk2).unwrap();
+        assert_eq!(new1.removed.lines.len(), 2);
+        assert_eq!(new2.removed.lines.len(), 4);
     }
 
     #[test]

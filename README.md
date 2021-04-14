@@ -14,7 +14,16 @@ git absorb --and-rebase
 # or: git absorb && git rebase -i --autosquash master
 ```
 
-`git absorb` will automatically identify which commits are safe to modify, and which staged changes belong to each of those commits. It will then write `fixup!` commits for each of those changes. You can check its output manually if you don't trust it, and then fold the fixups into your feature branch with git's built-in autosquash functionality.
+`git absorb` will automatically identify which commits are safe to modify, and which staged changes belong to each of those commits. It will then write `fixup!` commits for each of those changes.
+
+With the `--and-rebase` flag, these fixup commits will be automatically integrated into the corresponding ones. Alternatively, you can check its output manually if you don't trust it, and then fold the fixups into your feature branch with git's built-in [autosquash](https://git-scm.com/docs/git-rebase#Documentation/git-rebase.txt-rebaseautoStash) functionality:
+
+```
+git add $FILES_YOU_FIXED
+git absorb
+git log # check the auto-generated fixup commits
+git rebase -i --autosquash master
+```
 
 ## Installing
 

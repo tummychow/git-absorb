@@ -44,6 +44,14 @@ Alternatively, `git absorb` is available in the following system package manager
 3. If you are satisfied with the output, `git rebase -i --autosquash` to squash the `fixup!` commits into their predecessors. You can set the [`GIT_SEQUENCE_EDITOR`](https://stackoverflow.com/a/29094904) environment variable if you don't need to edit the rebase TODO file.
 4. If you are not satisfied (or if something bad happened), `git reset --soft` to the pre-absorption commit to recover your old state. (You can find the commit in question with `git reflog`.) And if you think `git absorb` is at fault, please [file an issue](https://github.com/tummychow/git-absorb/issues/new).
 
+## How it works (roughly)
+
+`git absorb` works by checking if two patches P1 and P2 *commute*, that is, if applying P1 before P2 gives the same result as applying P2 before P1.
+
+`git absorb` considers a range of commits ending at HEAD. The first commit can be specified explicitly with `--base <ref>`, by default the last 10 commits will be considered (see Configuration below for how to change this).
+
+For each hunk in the index, `git absorb` will check if that hunk commutes with the last commit, then the one before that, etc. When it finds a commit that does not commute with the hunk, this is the right parent commit for this change, and the hunk is turned into a fixup commit. If the hunk commutes with all commits in the range, it means we have not found the parent commit for this change; a warning is displayed and this hunk  remains uncommited in the index. 
+
 ## Configuration
 
 ### Stack size

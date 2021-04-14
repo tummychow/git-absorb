@@ -11,7 +11,7 @@ You have a feature branch with a few commits. Your teammate reviewed the branch 
 ```
 git add $FILES_YOU_FIXED
 git absorb --and-rebase
-# or: git rebase -i --autosquash master
+# or: git absorb && git rebase -i --autosquash master
 ```
 
 `git absorb` will automatically identify which commits are safe to modify, and which indexed changes belong to each of those commits. It will then write `fixup!` commits for each of those changes. You can check its output manually if you don't trust it, and then fold the fixups into your feature branch with git's built-in autosquash functionality.

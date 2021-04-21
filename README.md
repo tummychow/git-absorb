@@ -37,6 +37,13 @@ Alternatively, `git absorb` is available in the following system package manager
 | nixpkgs stable and unstable | `nix-env -iA nixpkgs.gitAndTools.git-absorb` |
 | Void Linux                  | `xbps-install -S git-absorb`                 |
 
+Note: `cargo install` does not currently know how to install manpages ([cargo#2729](https://github.com/rust-lang/cargo/issues/2729)), so if you use `cargo` for installation then `git absorb --help` will not work. Here is a manual workaround, assuming your system has a `~/.local/share/man/man1` directory that `man --path` knows about:
+
+```
+wget https://raw.githubusercontent.com/tummychow/git-absorb/master/Documentation/git-absorb.1
+mv git-absorb.1 ~/.local/share/man/man1
+```
+
 ## Usage
 
 1. `git add` any changes that you want to absorb. By design, `git absorb` will only consider content in the git index.

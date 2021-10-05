@@ -25,7 +25,11 @@ pub fn working_stack<'repo>(
     debug!(logger, "head found"; "head" => head.name());
 
     if !head.is_branch() {
-        return Err(anyhow!("HEAD is not a branch"));
+        if !force {
+            return Err(anyhow!("HEAD is not a branch"));
+        } else {
+            warn!(logger, "HEAD is not a branch, but --force used to continue.");
+        }
     }
 
     let mut revwalk = repo.revwalk()?;

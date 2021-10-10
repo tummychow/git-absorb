@@ -28,7 +28,10 @@ pub fn working_stack<'repo>(
         if !force {
             return Err(anyhow!("HEAD is not a branch"));
         } else {
-            warn!(logger, "HEAD is not a branch, but --force used to continue.");
+            warn!(
+                logger,
+                "HEAD is not a branch, but --force used to continue."
+            );
         }
     }
 

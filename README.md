@@ -38,7 +38,7 @@ Alternatively, `git absorb` is available in the following system package manager
 
 | Repository                  | Command                                      |
 | --------------------------- | -------------------------------------------- |
-| AUR                         | `yay -S git-absorb`                          |
+| Arch Linux                  | `pacman -S git-absorb`                       |
 | DPorts                      | `pkg install git-absorb`                     |
 | FreeBSD Ports               | `pkg install git-absorb`                     |
 | Homebrew and Linuxbrew      | `brew install git-absorb`                    |

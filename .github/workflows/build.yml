@@ -1,0 +1,26 @@
+name: Build
+
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macOS-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --release --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Upload artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: git-absorb-${{ matrix.os }}
+        path: |
+          target/release/git-absorb
+          target/release/git-absorb.exe

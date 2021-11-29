@@ -31,10 +31,12 @@ Alternatively, `git absorb` is available in the following system package manager
 | Repository                  | Command                                      |
 | --------------------------- | -------------------------------------------- |
 | Arch Linux                  | `pacman -S git-absorb`                       |
+| Debian                      | `apt install git-absorb`                     |
 | DPorts                      | `pkg install git-absorb`                     |
 | FreeBSD Ports               | `pkg install git-absorb`                     |
 | Homebrew and Linuxbrew      | `brew install git-absorb`                    |
 | nixpkgs stable and unstable | `nix-env -iA nixpkgs.gitAndTools.git-absorb` |
+| Ubuntu                      | `apt install git-absorb`                     |
 | Void Linux                  | `xbps-install -S git-absorb`                 |
 
 ## Compiling from Source

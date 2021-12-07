@@ -38,6 +38,7 @@ Alternatively, `git absorb` is available in the following system package manager
 | nixpkgs stable and unstable | `nix-env -iA nixpkgs.gitAndTools.git-absorb` |
 | Ubuntu                      | `apt install git-absorb`                     |
 | Void Linux                  | `xbps-install -S git-absorb`                 |
+| GNU Guix                    | `guix install git-absorb`                    |
 
 ## Compiling from Source
 

@@ -42,9 +42,6 @@ impl Diff {
 
         Ok(ret)
     }
-    pub fn by_old(&self, path: &[u8]) -> Option<&Patch> {
-        self.by_old.get(path).map(|&idx| &self.patches[idx])
-    }
     pub fn by_new(&self, path: &[u8]) -> Option<&Patch> {
         self.by_new.get(path).map(|&idx| &self.patches[idx])
     }

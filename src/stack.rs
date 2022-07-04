@@ -26,7 +26,7 @@ pub fn working_stack<'repo>(
 
     if !head.is_branch() {
         if !force {
-            return Err(anyhow!("HEAD is not a branch"));
+            return Err(anyhow!("HEAD is not a branch, use --force to override"));
         } else {
             warn!(
                 logger,

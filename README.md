@@ -1,6 +1,20 @@
 # git absorb
 
-This is a port of Facebook's [`hg absorb`](https://www.mercurial-scm.org/repo/hg/rev/5111d11b8719), which I first read about on [mozilla.dev.version-control](https://groups.google.com/forum/#!msg/mozilla.dev.version-control/nh4fITFlEMk/ZNXgnAzxAQAJ).
+This is a port of Facebook's [`hg absorb`](https://www.mercurial-scm.org/repo/hg/rev/5111d11b8719), which I first read about on [mozilla.dev.version-control](https://groups.google.com/forum/#!msg/mozilla.dev.version-control/nh4fITFlEMk/ZNXgnAzxAQAJ):
+
+> * Facebook demoed `hg absorb` which is probably the coolest workflow
+enhancement I've seen to version control in years. Essentially, when your
+working directory has uncommitted changes on top of draft changesets, you
+can run `hg absorb` and the uncommitted modifications are automagically
+folded ("absorbed") into the appropriate draft ancestor changesets. This is
+essentially doing `hg histedit` + "roll" actions without having to make a
+commit or manually make history modification rules. The command essentially
+looks at the lines that were modified, finds a changeset modifying those
+lines, and amends that changeset to include your uncommitted changes. If
+the changes can't be made without conflicts, they remain uncommitted. This
+workflow is insanely useful for things like applying review feedback. You
+just make file changes, run `hg absorb` and the mapping of changes to
+commits sorts itself out. It is magical. 
 
 ## Elevator Pitch
 

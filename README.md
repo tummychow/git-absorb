@@ -2,19 +2,7 @@
 
 This is a port of Facebook's [`hg absorb`](https://www.mercurial-scm.org/repo/hg/rev/5111d11b8719), which I first read about on [mozilla.dev.version-control](https://groups.google.com/forum/#!msg/mozilla.dev.version-control/nh4fITFlEMk/ZNXgnAzxAQAJ):
 
-> * Facebook demoed `hg absorb` which is probably the coolest workflow
-enhancement I've seen to version control in years. Essentially, when your
-working directory has uncommitted changes on top of draft changesets, you
-can run `hg absorb` and the uncommitted modifications are automagically
-folded ("absorbed") into the appropriate draft ancestor changesets. This is
-essentially doing `hg histedit` + "roll" actions without having to make a
-commit or manually make history modification rules. The command essentially
-looks at the lines that were modified, finds a changeset modifying those
-lines, and amends that changeset to include your uncommitted changes. If
-the changes can't be made without conflicts, they remain uncommitted. This
-workflow is insanely useful for things like applying review feedback. You
-just make file changes, run `hg absorb` and the mapping of changes to
-commits sorts itself out. It is magical. 
+> * Facebook demoed `hg absorb` which is probably the coolest workflow enhancement I've seen to version control in years. Essentially, when your working directory has uncommitted changes on top of draft changesets, you can run `hg absorb` and the uncommitted modifications are automagically folded ("absorbed") into the appropriate draft ancestor changesets. This is essentially doing `hg histedit` + "roll" actions without having to make a commit or manually make history modification rules. The command essentially looks at the lines that were modified, finds a changeset modifying those lines, and amends that changeset to include your uncommitted changes. If the changes can't be made without conflicts, they remain uncommitted. This workflow is insanely useful for things like applying review feedback. You just make file changes, run `hg absorb` and the mapping of changes to commits sorts itself out. It is magical. 
 
 ## Elevator Pitch
 
@@ -38,7 +26,7 @@ git rebase -i --autosquash master
 
 ## Installing
 
-The easiest way to install `git absorb` is to download the latest CI artifact from the actions tab. Artifacts are available for Windows, MacOS and Ubuntu.
+The easiest way to install `git absorb` is to download an artifact from the latest [tagged release](https://github.com/tummychow/git-absorb/releases). Artifacts are available for Windows, MacOS, and Linux (built on Ubuntu with statically linked libgit2). If you need a commit that hasn't been released yet, check the [latest CI artifact](https://github.com/tummychow/git-absorb/actions/workflows/build.yml?query=event%3Apush+branch%3Amaster) or file an issue.
 
 Alternatively, `git absorb` is available in the following system package managers:
 
@@ -56,7 +44,7 @@ Alternatively, `git absorb` is available in the following system package manager
 
 ## Compiling from Source
 
-[![crates.io badge](https://img.shields.io/crates/v/git-absorb.svg)](https://crates.io/crates/git-absorb)
+[![crates.io badge](https://img.shields.io/crates/v/git-absorb.svg)](https://crates.io/crates/git-absorb) [![Build](https://github.com/tummychow/git-absorb/actions/workflows/build.yml/badge.svg?branch=master&event=push)](https://github.com/tummychow/git-absorb/actions/workflows/build.yml)
 
 You will need the following:
 

@@ -19,16 +19,16 @@ on:
   push:
     # Enable when testing release infrastructure on a branch + set a GA_VERSION a few lines below
     # branches:
-    # -  tummychow/work
+    # -  release-twiddling
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
 jobs:
   create-release:
     name: create-release
     runs-on: ubuntu-latest
-#    env:
+    # env:
       # Set to force version number, e.g., when no tag exists.
-#      GA_VERSION: TEST-0.0.4
+      # GA_VERSION: TEST-0.6.8
     outputs:
       upload_url: ${{ steps.release.outputs.upload_url }}
       GA_VERSION: ${{ env.GA_VERSION }}
@@ -57,52 +57,44 @@ jobs:
     needs: ['create-release']
     runs-on: ${{ matrix.os }}
     env:
-      # For some builds, we use cross to test on 32-bit and big-endian
-      # systems.
-      CARGO: cargo
-      # When CARGO is set to CROSS, this is set to `--target matrix.target`.
-      TARGET_FLAGS: ""
-      # When CARGO is set to CROSS, TARGET_DIR includes matrix.target.
-      TARGET_DIR: ./target
       # Emit backtraces on panics.
       RUST_BACKTRACE: 1
-      # Build static releases with PCRE2.
-      PCRE2_SYS_STATIC: 1
     strategy:
       matrix:
-        build: [linux, linux-arm, macos, win-msvc, win-gnu, win32-msvc]
+        build: [linux, linux-arm, macos, win-msvc, win-gnu]
         include:
-          # Use an old linux distro to link against an old glibc to not get problems on older distros
+          # cross doesn't support the darwin/msvc targets unless you build their dockerfiles locally, due to licensing issues
+          # https://github.com/cross-rs/cross-toolchains
+          # so we only use it for the linux targets that require other architectures/libcs
           - build: linux
-            os: ubuntu-18.04
+            os: ubuntu-latest
             rust: nightly
             target: x86_64-unknown-linux-musl
+            cross: true
           - build: linux-arm
-            os: ubuntu-18.04
+            os: ubuntu-latest
             rust: nightly
             target: arm-unknown-linux-gnueabihf
+            cross: true
           - build: macos
             os: macos-latest
             rust: nightly
             target: x86_64-apple-darwin
+            cross: false
           - build: win-msvc
-            os: windows-2019
+            os: windows-latest
             rust: nightly
             target: x86_64-pc-windows-msvc
+            cross: false
           - build: win-gnu
-            os: windows-2019
+            os: windows-latest
             rust: nightly-x86_64-gnu
             target: x86_64-pc-windows-gnu
-          - build: win32-msvc
-            os: windows-2019
-            rust: nightly
-            target: i686-pc-windows-msvc
+            cross: false
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
+        uses: actions/checkout@v3
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -112,22 +104,12 @@ jobs:
           override: true
           target: ${{ matrix.target }}
 
-      - name: Use Cross
-        shell: bash
-        run: |
-          cargo install cross
-          echo "CARGO=cross" >> $GITHUB_ENV
-          echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
-          echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
-
-      - name: Show command used for Cargo
-        run: |
-          echo "cargo command is: ${{ env.CARGO }}"
-          echo "target flag is: ${{ env.TARGET_FLAGS }}"
-          echo "target dir is: ${{ env.TARGET_DIR }}"
-
       - name: Build release binary
-        run: ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.cross }}
+          command: build
+          args: --release --verbose --target ${{ matrix.target }}
 
       - name: Strip release binary (linux and macos)
         if: matrix.build == 'linux' || matrix.build == 'macos'
@@ -145,14 +127,14 @@ jobs:
       - name: Build archive
         shell: bash
         run: |
-          outdir="${{ env.TARGET_DIR }}/release"
+          outdir="./target/${{ matrix.target }}/release"
           staging="git-absorb-${{ needs.create-release.outputs.GA_VERSION }}-${{ matrix.target }}"
           mkdir -p "$staging"/doc
 
           cp {README.md,LICENSE.md} "$staging/"
           cp Documentation/{git-absorb.1,git-absorb.txt} "$staging/doc/"
 
-          if [ "${{ matrix.os }}" = "windows-2019" ]; then
+          if [ "${{ matrix.target }}" =~ .*windows.* ]; then
             cp "target/${{ matrix.target }}/release/git-absorb.exe" "$staging/"
             7z a "$staging.zip" "$staging"
             echo "ASSET=$staging.zip" >> $GITHUB_ENV

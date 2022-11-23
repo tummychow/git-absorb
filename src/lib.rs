@@ -119,9 +119,9 @@ pub fn run(config: &Config) -> Result<()> {
             // The offset is the number of lines added minus the number of lines removed by a hunk:
             let hunk_offset = index_hunk.changed_offset();
 
-            // To aid in understanding these arithmetics, here's an illustration.
+            // To aid in understanding these arithmetic, here's an illustration.
             // There are two hunks in the original patch, each adding one line ("line2" and
-            // "line5"). Assuming the first hunk (with offset = -1) was already proceesed
+            // "line5"). Assuming the first hunk (with offset = -1) was already processed
             // and applied, the table shows the three versions of the patch, with line numbers
             // on the <A>dded and <R>emoved sides for each:
             // |----------------|-----------|------------------|

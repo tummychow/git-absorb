@@ -74,7 +74,7 @@ mv git-absorb.1 ~/.local/share/man/man1
 
 `git absorb` considers a range of commits ending at HEAD. The first commit can be specified explicitly with `--base <ref>`. By default the last 10 commits will be considered (see [Configuration](#configuration) below for how to change this).
 
-For each hunk in the index, `git absorb` will check if that hunk commutes with the last commit, then the one before that, etc. When it finds a commit that does not commute with the hunk, it infers that this is the right parent commit for this change, and the hunk is turned into a fixup commit. If the hunk commutes with all commits in the range, it means we have not found a suitable parent commit for this change; a warning is displayed, and this hunk remains uncommited in the index. 
+For each hunk in the index, `git absorb` will check if that hunk commutes with the last commit, then the one before that, etc. When it finds a commit that does not commute with the hunk, it infers that this is the right parent commit for this change, and the hunk is turned into a fixup commit. If the hunk commutes with all commits in the range, it means we have not found a suitable parent commit for this change; a warning is displayed, and this hunk remains uncommitted in the index. 
 
 ## Configuration
 

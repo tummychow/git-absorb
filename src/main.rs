@@ -52,6 +52,13 @@ fn main() {
                 .long("gen-completions")
                 .takes_value(true)
                 .possible_values(&["bash", "fish", "zsh", "powershell", "elvish"]),
+        )
+        .arg(
+            clap::Arg::with_name("whole-file")
+                .help("Match the change against the complete file   ")
+                .short("w")
+                .long("--whole-file")
+                .takes_value(false),
         );
     let mut args_clone = args.clone();
     let args = args.get_matches();
@@ -104,6 +111,7 @@ fn main() {
         force: args.is_present("force"),
         base: args.value_of("base"),
         and_rebase: args.is_present("and-rebase"),
+        whole_file: args.is_present("whole-file"),
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

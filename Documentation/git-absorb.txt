@@ -54,6 +54,11 @@ FLAGS
 --force::
         Skip safety checks
 
+-w::
+--whole-file::
+        Match the first commit touching the same file as the current hunk.
+        Use this with care!
+
 -h::
 --help::
         Prints help information

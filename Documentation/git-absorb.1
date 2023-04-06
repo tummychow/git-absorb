@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: git-absorb
 .\"    Author: [see the "AUTHOR" section]
-.\" Generator: DocBook XSL Stylesheets v1.79.1 <http://docbook.sf.net/>
-.\"      Date: 10/18/2019
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 04/06/2023
 .\"    Manual: git absorb
 .\"    Source: git-absorb 0.5.0
 .\"  Language: English
 .\"
-.TH "GIT\-ABSORB" "1" "10/18/2019" "git\-absorb 0\&.5\&.0" "git absorb"
+.TH "GIT\-ABSORB" "1" "04/06/2023" "git\-absorb 0\&.5\&.0" "git absorb"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -69,6 +69,11 @@ Don\(cqt make any actual changes
 \-f, \-\-force
 .RS 4
 Skip safety checks
+.RE
+.PP
+\-w, \-\-whole\-file
+.RS 4
+Match the first commit touching the same file as the current hunk\&. Use this with care!
 .RE
 .PP
 \-h, \-\-help

@@ -13,6 +13,7 @@ pub struct Config<'a> {
     pub force: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
+    pub whole_file: bool,
     pub logger: &'a slog::Logger,
 }
 
@@ -167,6 +168,17 @@ pub fn run(config: &Config) -> Result<()> {
                         continue 'commit;
                     }
                 };
+
+                // sometimes we just forget some change (eg: intializing some object) that
+                // happens in a completely unrelated place with the current hunks. In those
+                // cases, might be helpful to just match the first commit touching the same
+                // file as the current hunk. Use this option with care!
+                if config.whole_file {
+                    debug!(c_logger, "Commit touches the hunk file and match whole file is enabled");
+                    dest_commit = Some(commit);
+                    break 'commit;
+                }
+
                 if next_patch.status == git2::Delta::Added {
                     debug!(c_logger, "found noncommutative commit by add");
                     dest_commit = Some(commit);

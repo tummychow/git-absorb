@@ -57,7 +57,7 @@ fn main() {
             clap::Arg::with_name("whole-file")
                 .help("Match the change against the complete file   ")
                 .short("w")
-                .long("--whole-file")
+                .long("whole-file")
                 .takes_value(false),
         );
     let mut args_clone = args.clone();

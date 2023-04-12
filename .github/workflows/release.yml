@@ -134,7 +134,7 @@ jobs:
           cp {README.md,LICENSE.md} "$staging/"
           cp Documentation/{git-absorb.1,git-absorb.txt} "$staging/doc/"
 
-          if [ "${{ matrix.target }}" =~ .*windows.* ]; then
+          if [[ "${{ matrix.target }}" =~ .*windows.* ]]; then
             cp "target/${{ matrix.target }}/release/git-absorb.exe" "$staging/"
             7z a "$staging.zip" "$staging"
             echo "ASSET=$staging.zip" >> $GITHUB_ENV

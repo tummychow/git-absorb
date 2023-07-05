@@ -19,6 +19,7 @@ pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
     user_provided_base: Option<&str>,
     force: bool,
+    fix_past_merges: bool,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>> {
     let head = repo.head()?;
@@ -38,7 +39,9 @@ pub fn working_stack<'repo>(
     let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL)?;
     revwalk.push_head()?;
-    revwalk.simplify_first_parent()?;
+    if !fix_past_merges {
+        revwalk.simplify_first_parent()?;
+    }
     debug!(logger, "head pushed"; "head" => head.name());
 
     let base_commit = match user_provided_base {
@@ -73,7 +76,9 @@ pub fn working_stack<'repo>(
     for rev in revwalk {
         commits_considered += 1;
         let commit = repo.find_commit(rev?)?;
-        if commit.parents().len() > 1 {
+        let is_merge = commit.parent_count() > 1;
+
+        if !fix_past_merges && is_merge {
             warn!(logger, "Will not fix up past the merge commit"; "commit" => commit.id().to_string());
             break;
         }
@@ -92,8 +97,11 @@ pub fn working_stack<'repo>(
                   "limit" => ret.len());
             break;
         }
-        debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
-        ret.push(commit);
+        // Ensure that we don't commit a fixup to the merge commit itself.
+        if !is_merge {
+            debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
+            ret.push(commit);
+        }
     }
     if commits_considered == 0 {
         if user_provided_base.is_none() {
@@ -203,7 +211,7 @@ mod tests {
 
         assert_stack_matches_chain(
             1,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &commits,
         );
     }
@@ -219,6 +227,7 @@ mod tests {
             &working_stack(
                 &repo,
                 Some(&commits[0].id().to_string()),
+                false,
                 false,
                 &empty_slog(),
             )
@@ -238,7 +247,7 @@ mod tests {
 
         assert_stack_matches_chain(
             MAX_STACK + 1,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &commits,
         );
     }
@@ -255,13 +264,13 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &new_commits,
         );
     }
 
     #[test]
-    fn test_stack_stops_at_merges() {
+    fn test_stack_stops_at_merges_without_fix_past_merges() {
         let (_dir, repo) = init_repo();
         let first = empty_commit(&repo, "HEAD", "first", &[]);
         // equivalent to checkout --orphan
@@ -273,8 +282,37 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &commits,
+        );
+    }
+
+    #[test]
+    fn test_stack_continues_at_merges_with_fix_past_merges() {
+        let (_dir, repo) = init_repo();
+        let base = empty_commit(&repo, "HEAD", "base", &[]);
+        let first = empty_commit(&repo, "HEAD", "first", &[&base]);
+        // equivalent to checkout --orphan
+        repo.set_head("refs/heads/new").unwrap();
+        let second = empty_commit(&repo, "HEAD", "second", &[&base]);
+        // the current commit must be the first parent
+        let merge = empty_commit(&repo, "HEAD", "merge", &[&second, &first]);
+        let commits = empty_commit_chain(&repo, "HEAD", &[&merge], 2);
+
+        let mut expect = vec![second, first];
+        expect.extend(commits);
+
+        assert_stack_matches_chain(
+            4,
+            &working_stack(
+                &repo,
+                Some(&base.id().to_string()),
+                false,
+                true,
+                &empty_slog(),
+            )
+            .unwrap(),
+            &expect,
         );
     }
 }

@@ -14,6 +14,7 @@ pub struct Config<'a> {
     pub base: Option<&'a str>,
     pub and_rebase: bool,
     pub whole_file: bool,
+    pub fix_past_merges: bool,
     pub logger: &'a slog::Logger,
 }
 
@@ -21,7 +22,13 @@ pub fn run(config: &Config) -> Result<()> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
 
-    let stack = stack::working_stack(&repo, config.base, config.force, config.logger)?;
+    let stack = stack::working_stack(
+        &repo,
+        config.base,
+        config.force,
+        config.fix_past_merges,
+        config.logger,
+    )?;
     if stack.is_empty() {
         crit!(config.logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -174,7 +181,10 @@ pub fn run(config: &Config) -> Result<()> {
                 // cases, might be helpful to just match the first commit touching the same
                 // file as the current hunk. Use this option with care!
                 if config.whole_file {
-                    debug!(c_logger, "Commit touches the hunk file and match whole file is enabled");
+                    debug!(
+                        c_logger,
+                        "Commit touches the hunk file and match whole file is enabled"
+                    );
                     dest_commit = Some(commit);
                     break 'commit;
                 }

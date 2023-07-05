@@ -59,6 +59,20 @@ fn main() {
                 .short("w")
                 .long("whole-file")
                 .takes_value(false),
+        )
+        .arg(
+            clap::Arg::with_name("fix-past-merges")
+                .help("Attempt to fixup past the merge commit")
+                .short("m")
+                .long("fix-past-merges")
+                // If you have remote/main -> {first, second} -> merged, then:
+                // * What does the "max stack" even mean?
+                // * first and second are likely branches, and the algorithm used in working_stack
+                //   explicitly disallows that.
+                // It could technically work without base, but in most realistic cases it would just
+                // silently fail.
+                .requires("base")
+                .takes_value(false),
         );
     let mut args_clone = args.clone();
     let args = args.get_matches();
@@ -112,6 +126,7 @@ fn main() {
         base: args.value_of("base"),
         and_rebase: args.is_present("and-rebase"),
         whole_file: args.is_present("whole-file"),
+        fix_past_merges: args.is_present("fix-past-merges"),
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

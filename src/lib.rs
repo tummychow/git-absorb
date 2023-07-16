@@ -14,6 +14,7 @@ pub struct Config<'a> {
     pub base: Option<&'a str>,
     pub and_rebase: bool,
     pub whole_file: bool,
+    pub one_fixup_per_commit: bool,
     pub logger: &'a slog::Logger,
 }
 
@@ -79,6 +80,8 @@ pub fn run(config: &Config) -> Result<()> {
         .signature()
         .or_else(|_| git2::Signature::now("nobody", "nobody@example.com"))?;
     let mut head_commit = repo.head()?.peel_to_commit()?;
+
+    let mut hunks_with_commit = vec![];
 
     let mut patches_considered = 0usize;
     'patch: for index_patch in index.iter() {
@@ -223,18 +226,56 @@ pub fn run(config: &Config) -> Result<()> {
                 }
             };
 
+            let hunk_with_commit = HunkWithCommit {
+                hunk_to_apply,
+                dest_commit,
+                index_patch,
+            };
+            hunks_with_commit.push(hunk_with_commit);
+
+            applied_hunks_offset += hunk_offset;
+        }
+    }
+
+    hunks_with_commit.sort_by_key(|h| h.dest_commit.id());
+    // * apply all hunks that are going to be fixed up into `dest_commit`
+    // * commit the fixup
+    // * repeat for all `dest_commit`s
+    //
+    // the `.zip` here will gives us something similar to `.windows`, but with
+    // an extra iteration for the last element (otherwise we would have to
+    // special case the last element and commit it separately)
+    for (current, next) in hunks_with_commit
+        .iter()
+        .zip(hunks_with_commit.iter().skip(1).map(Some).chain([None]))
+    {
+        head_tree = apply_hunk_to_tree(
+            &repo,
+            &head_tree,
+            &current.hunk_to_apply,
+            &current.index_patch.old_path,
+        )?;
+
+        // whether there are no more hunks to apply to `dest_commit`
+        let commit_fixup = next.map_or(true, |next| {
+            // if the next hunk is for a different commit -- commit what we have so far
+            !config.one_fixup_per_commit || next.dest_commit.id() != current.dest_commit.id()
+        });
+        if commit_fixup {
             // TODO: the git2 api only supports utf8 commit messages,
             // so it's okay to use strings instead of bytes here
             // https://docs.rs/git2/0.7.5/src/git2/repo.rs.html#998
             // https://libgit2.org/libgit2/#HEAD/group/commit/git_commit_create
-            let dest_commit_id = dest_commit.id().to_string();
-            let dest_commit_locator = dest_commit
+            let dest_commit_id = current.dest_commit.id().to_string();
+            let dest_commit_locator = current
+                .dest_commit
                 .summary()
                 .filter(|&msg| summary_counts[msg] == 1)
                 .unwrap_or(&dest_commit_id);
+            let diff = repo
+                .diff_tree_to_tree(Some(&head_commit.tree()?), Some(&head_tree), None)?
+                .stats()?;
             if !config.dry_run {
-                head_tree =
-                    apply_hunk_to_tree(&repo, &head_tree, &hunk_to_apply, &index_patch.old_path)?;
                 head_commit = repo.find_commit(repo.commit(
                     Some("HEAD"),
                     &signature,
@@ -245,15 +286,14 @@ pub fn run(config: &Config) -> Result<()> {
                 )?)?;
                 info!(config.logger, "committed";
                       "commit" => head_commit.id().to_string(),
-                      "header" => hunk_to_apply.header(),
+                      "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
             } else {
                 info!(config.logger, "would have committed";
                       "fixup" => dest_commit_locator,
-                      "header" => hunk_to_apply.header(),
+                      "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
             }
-            applied_hunks_offset += hunk_offset;
         }
     }
 
@@ -288,6 +328,12 @@ pub fn run(config: &Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+struct HunkWithCommit<'c, 'r, 'p> {
+    hunk_to_apply: owned::Hunk,
+    dest_commit: &'c git2::Commit<'r>,
+    index_patch: &'p owned::Patch,
 }
 
 fn apply_hunk_to_tree<'repo>(

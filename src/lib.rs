@@ -180,7 +180,10 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
                 // cases, might be helpful to just match the first commit touching the same
                 // file as the current hunk. Use this option with care!
                 if config.whole_file {
-                    debug!(c_logger, "Commit touches the hunk file and match whole file is enabled");
+                    debug!(
+                        c_logger,
+                        "Commit touches the hunk file and match whole file is enabled"
+                    );
                     dest_commit = Some(commit);
                     break 'commit;
                 }

@@ -21,7 +21,10 @@ pub struct Config<'a> {
 pub fn run(config: &Config) -> Result<()> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
+    run_with_repo(config, &repo)
+}
 
+fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
     let stack = stack::working_stack(&repo, config.base, config.force, config.logger)?;
     if stack.is_empty() {
         crit!(config.logger, "No commits available to fix up, exiting");
@@ -409,4 +412,133 @@ fn split_lines_after(content: &[u8], n: usize) -> (&[u8], &[u8]) {
         0
     };
     content.split_at(split_index)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+
+    struct Context {
+        repo: git2::Repository,
+        dir: tempfile::TempDir,
+    }
+
+    impl Context {
+        fn join(&self, p: &Path) -> PathBuf {
+            self.dir.path().join(p)
+        }
+    }
+
+    /// Prepare a fresh git repository with an initial commit and a file.
+    fn prepare_repo() -> (Context, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+
+        let path = PathBuf::from("test-file.txt");
+        std::fs::write(
+            dir.path().join(&path),
+            br#"
+line
+line
+
+more
+lines
+"#,
+        )
+        .unwrap();
+
+        // make the borrow-checker happy by introducing a new scope
+        {
+            let tree = add(&repo, &path);
+            let signature = repo
+                .signature()
+                .or_else(|_| git2::Signature::now("nobody", "nobody@example.com"))
+                .unwrap();
+            repo.commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "Initial commit.",
+                &tree,
+                &[],
+            )
+            .unwrap();
+        }
+
+        (Context { repo, dir }, path)
+    }
+
+    /// Stage the changes made to `path`.
+    fn add<'r>(repo: &'r git2::Repository, path: &Path) -> git2::Tree<'r> {
+        let mut index = repo.index().unwrap();
+        index.add_path(&path).unwrap();
+        index.write().unwrap();
+
+        let tree_id = index.write_tree_to(&repo).unwrap();
+        repo.find_tree(tree_id).unwrap()
+    }
+
+    /// Prepare an empty repo, and stage some changes.
+    fn prepare_and_stage() -> Context {
+        let (ctx, file_path) = prepare_repo();
+
+        // add some lines to our file
+        let path = ctx.join(&file_path);
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let modifications = format!("new_line1\n{contents}\nnew_line2");
+        std::fs::write(&path, &modifications).unwrap();
+
+        // stage it
+        add(&ctx.repo, &file_path);
+
+        ctx
+    }
+
+    #[test]
+    fn multiple_fixups_per_commit() {
+        let ctx = prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: false,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 3);
+    }
+
+    #[test]
+    fn one_fixup_per_commit() {
+        let ctx = prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: true,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+    }
 }

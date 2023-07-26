@@ -255,7 +255,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         .iter()
         .zip(hunks_with_commit.iter().skip(1).map(Some).chain([None]))
     {
-        head_tree = apply_hunk_to_tree(
+        let new_head_tree = apply_hunk_to_tree(
             &repo,
             &head_tree,
             &current.hunk_to_apply,
@@ -279,9 +279,10 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
                 .filter(|&msg| summary_counts[msg] == 1)
                 .unwrap_or(&dest_commit_id);
             let diff = repo
-                .diff_tree_to_tree(Some(&head_commit.tree()?), Some(&head_tree), None)?
+                .diff_tree_to_tree(Some(&head_commit.tree()?), Some(&new_head_tree), None)?
                 .stats()?;
             if !config.dry_run {
+                head_tree = new_head_tree;
                 head_commit = repo.find_commit(repo.commit(
                     Some("HEAD"),
                     &signature,

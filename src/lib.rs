@@ -301,6 +301,9 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
                       "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
             }
+        } else {
+            // we didn't commit anything, but we applied a hunk
+            head_tree = new_head_tree;
         }
     }
 
@@ -500,6 +503,18 @@ lines
         ctx
     }
 
+    fn nothing_left_in_index(ctx: Context) {
+        let head = ctx.repo.head().unwrap().peel_to_tree().unwrap();
+        let diff = ctx
+            .repo
+            .diff_tree_to_index(Some(&head), Some(&ctx.repo.index().unwrap()), None)
+            .unwrap();
+        let stats = diff.stats().unwrap();
+        assert_eq!(stats.files_changed(), 0);
+        assert_eq!(stats.insertions(), 0);
+        assert_eq!(stats.deletions(), 0);
+    }
+
     #[test]
     fn multiple_fixups_per_commit() {
         let ctx = prepare_and_stage();
@@ -521,6 +536,8 @@ lines
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 3);
+
+        nothing_left_in_index(ctx);
     }
 
     #[test]
@@ -544,5 +561,7 @@ lines
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 2);
+
+        nothing_left_in_index(ctx);
     }
 }

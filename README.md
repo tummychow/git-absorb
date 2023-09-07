@@ -38,7 +38,7 @@ Alternatively, `git absorb` is available in the following system package manager
 | Fedora                      | `dnf install git-absorb`                     |
 | FreeBSD Ports               | `pkg install git-absorb`                     |
 | Homebrew and Linuxbrew      | `brew install git-absorb`                    |
-| nixpkgs stable and unstable | `nix-env -iA nixpkgs.gitAndTools.git-absorb` |
+| nixpkgs stable and unstable | `nix-env -iA nixpkgs.git-absorb` |
 | Ubuntu                      | `apt install git-absorb`                     |
 | Void Linux                  | `xbps-install -S git-absorb`                 |
 | GNU Guix                    | `guix install git-absorb`                    |

@@ -46,8 +46,9 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
     }
 
     let autostage_enabled = config::auto_stage_if_nothing_staged(repo);
+    let index_was_empty = nothing_left_in_index(repo)?;
     let mut we_added_everything_to_index = false;
-    if autostage_enabled && nothing_left_in_index(repo)? {
+    if autostage_enabled && index_was_empty {
         we_added_everything_to_index = true;
 
         // no matter from what subdirectory we're executing,
@@ -344,10 +345,20 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
     }
 
     if patches_considered == 0 {
-        warn!(
-            config.logger,
-            "No additions staged, try adding something to the index."
-        );
+        if index_was_empty && !we_added_everything_to_index {
+            warn!(
+                config.logger,
+                "No changes staged, try adding something \
+                 to the index or set {} = true",
+                config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
+            );
+        } else {
+            warn!(
+                config.logger,
+                "Could not find a commit to fix up, use \
+                 --base to increase the search range."
+            )
+        }
     } else if config.and_rebase {
         use std::process::Command;
         // unwrap() is safe here, as we exit early if the stack is empty

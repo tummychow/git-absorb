@@ -45,6 +45,20 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         return Ok(());
     }
 
+    let autostage_enabled = config::auto_stage_if_nothing_staged(repo);
+    let index_was_empty = nothing_left_in_index(repo)?;
+    let mut we_added_everything_to_index = false;
+    if autostage_enabled && index_was_empty {
+        we_added_everything_to_index = true;
+
+        // no matter from what subdirectory we're executing,
+        // "." will still refer to the root workdir.
+        let pathspec = ["."];
+        let mut index = repo.index()?;
+        index.add_all(pathspec.iter(), git2::IndexAddOption::DEFAULT, None)?;
+        index.write()?;
+    }
+
     let mut diff_options = Some({
         let mut ret = git2::DiffOptions::new();
         ret.context_lines(0)
@@ -321,11 +335,30 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         }
     }
 
+    if autostage_enabled && we_added_everything_to_index {
+        // now that the fixup commits have been created,
+        // we should unstage the remaining changes from the index.
+
+        let mut index = repo.index()?;
+        index.read_tree(&head_tree)?;
+        index.write()?;
+    }
+
     if patches_considered == 0 {
-        warn!(
-            config.logger,
-            "No additions staged, try adding something to the index."
-        );
+        if index_was_empty && !we_added_everything_to_index {
+            warn!(
+                config.logger,
+                "No changes staged, try adding something \
+                 to the index or set {} = true",
+                config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
+            );
+        } else {
+            warn!(
+                config.logger,
+                "Could not find a commit to fix up, use \
+                 --base to increase the search range."
+            )
+        }
     } else if config.and_rebase {
         use std::process::Command;
         // unwrap() is safe here, as we exit early if the stack is empty
@@ -435,6 +468,19 @@ fn split_lines_after(content: &[u8], n: usize) -> (&[u8], &[u8]) {
     content.split_at(split_index)
 }
 
+fn nothing_left_in_index(repo: &git2::Repository) -> Result<bool> {
+    let stats = index_stats(repo)?;
+    let nothing = stats.files_changed() == 0 && stats.insertions() == 0 && stats.deletions() == 0;
+    Ok(nothing)
+}
+
+fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
+    let head = repo.head()?.peel_to_tree()?;
+    let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
+    let stats = diff.stats()?;
+    Ok(stats)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
@@ -517,18 +563,6 @@ lines
         ctx
     }
 
-    fn nothing_left_in_index(ctx: Context) {
-        let head = ctx.repo.head().unwrap().peel_to_tree().unwrap();
-        let diff = ctx
-            .repo
-            .diff_tree_to_index(Some(&head), Some(&ctx.repo.index().unwrap()), None)
-            .unwrap();
-        let stats = diff.stats().unwrap();
-        assert_eq!(stats.files_changed(), 0);
-        assert_eq!(stats.insertions(), 0);
-        assert_eq!(stats.deletions(), 0);
-    }
-
     #[test]
     fn multiple_fixups_per_commit() {
         let ctx = prepare_and_stage();
@@ -551,7 +585,7 @@ lines
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 3);
 
-        nothing_left_in_index(ctx);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
     #[test]
@@ -576,6 +610,124 @@ lines
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 2);
 
-        nothing_left_in_index(ctx);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    fn autostage_common(ctx: &Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
+        // 1 modification w/o staging
+        let path = ctx.join(&file_path);
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let modifications = format!("{contents}\nnew_line2");
+        std::fs::write(&path, &modifications).unwrap();
+
+        // 1 extra file
+        let fp2 = PathBuf::from("unrel.txt");
+        std::fs::write(ctx.join(&fp2), "foo").unwrap();
+
+        (path, fp2)
+    }
+
+    #[test]
+    fn autostage_if_index_was_empty() {
+        let (ctx, file_path) = prepare_repo();
+
+        // requires enabled config var
+        ctx.repo
+            .config()
+            .unwrap()
+            .set_bool(config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME, true)
+            .unwrap();
+
+        autostage_common(&ctx, &file_path);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: false,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn do_not_autostage_if_index_was_not_empty() {
+        let (ctx, file_path) = prepare_repo();
+
+        // enable config var
+        ctx.repo
+            .config()
+            .unwrap()
+            .set_bool(config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME, true)
+            .unwrap();
+
+        let (_, fp2) = autostage_common(&ctx, &file_path);
+        // we stage the extra file - should stay in index
+        add(&ctx.repo, &fp2);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: false,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+
+        assert_eq!(index_stats(&ctx.repo).unwrap().files_changed(), 1);
+    }
+
+    #[test]
+    fn do_not_autostage_if_not_enabled_by_config_var() {
+        let (ctx, file_path) = prepare_repo();
+
+        // disable config var
+        ctx.repo
+            .config()
+            .unwrap()
+            .set_bool(config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME, false)
+            .unwrap();
+
+        autostage_common(&ctx, &file_path);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: false,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 }

@@ -104,6 +104,17 @@ To always have this behavior, set
     oneFixupPerCommit = true
 ```
 
+### Auto-stage all changes if nothing staged
+
+By default, git-absorb will only consider files that you've staged to the index via `git add`. However, sometimes one wants to try and absorb from all changes, which would require to stage them first via `git add .`. To avoid this extra step, set
+
+```ini
+[absorb]
+    autoStageIfNothingStaged = true
+```
+
+which tells git-absorb, when no changes are staged, to auto-stage them all, create fixup commits where possible, and unstage remaining changes from the index.
+
 ## TODO
 
 - implement force flag

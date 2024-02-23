@@ -113,7 +113,7 @@ fn main() {
         ));
     }
 
-    if let Err(e) = git_absorb::run(&git_absorb::Config {
+    if let Err(e) = git_absorb::run(&mut git_absorb::Config {
         dry_run: args.is_present("dry-run"),
         force: args.is_present("force"),
         base: args.value_of("base"),

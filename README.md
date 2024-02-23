@@ -94,6 +94,16 @@ edit your local or global `.gitconfig` and add the following section
     maxStack=50 # Or any other reasonable value for your project
 ```
 
+### One fixup per fixable commit
+
+By default, git-absorb will generate separate fixup commits for every absorbable hunk. Instead, can use the `-F` flag to create only 1 fixup commit for all hunks that absorb into the same commit.
+To always have this behavior, set
+
+```ini
+[absorb]
+    oneFixupPerCommit = true
+```
+
 ## TODO
 
 - implement force flag

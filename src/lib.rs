@@ -3,6 +3,7 @@ extern crate slog;
 use anyhow::{anyhow, Result};
 
 mod commute;
+mod config;
 mod owned;
 mod stack;
 
@@ -18,9 +19,22 @@ pub struct Config<'a> {
     pub logger: &'a slog::Logger,
 }
 
-pub fn run(config: &Config) -> Result<()> {
+pub fn run(config: &mut Config) -> Result<()> {
     let repo = git2::Repository::open_from_env()?;
     debug!(config.logger, "repository found"; "path" => repo.path().to_str());
+
+    // here, we default to the git config value,
+    // if the flag was not provided in the CLI.
+    //
+    // in the future, we'd likely want to differentiate between
+    // a "non-provided" option, vs an explicit --no-<option>
+    // that disables a behavior, much like git does.
+    // e.g. user may want to overwrite a config value with
+    // --no-one-fixup-per-commit -- then, defaulting to the config value
+    // like we do here is no longer sufficient. but until then, this is fine.
+    //
+    config.one_fixup_per_commit |= config::one_fixup_per_commit(&repo);
+
     run_with_repo(config, &repo)
 }
 

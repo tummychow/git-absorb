@@ -7,6 +7,9 @@ pub const ONE_FIXUP_PER_COMMIT_DEFAULT: bool = false;
 pub const AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME: &str = "absorb.autoStageIfNothingStaged";
 pub const AUTO_STAGE_IF_NOTHING_STAGED_DEFAULT: bool = false;
 
+pub const FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME: &str = "absorb.fixupTargetAlwaysSHA";
+pub const FIXUP_TARGET_ALWAYS_SHA_DEFAULT: bool = false;
+
 pub fn max_stack(repo: &git2::Repository) -> usize {
     match repo
         .config()
@@ -34,5 +37,15 @@ pub fn auto_stage_if_nothing_staged(repo: &git2::Repository) -> bool {
     {
         Ok(val) => val,
         _ => AUTO_STAGE_IF_NOTHING_STAGED_DEFAULT,
+    }
+}
+
+pub fn fixup_target_always_sha(repo: &git2::Repository) -> bool {
+    match repo
+        .config()
+        .and_then(|config| config.get_bool(FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME))
+    {
+        Ok(val) => val,
+        _ => FIXUP_TARGET_ALWAYS_SHA_DEFAULT,
     }
 }

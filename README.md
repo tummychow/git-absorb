@@ -115,6 +115,15 @@ By default, git-absorb will only consider files that you've staged to the index 
 
 which tells git-absorb, when no changes are staged, to auto-stage them all, create fixup commits where possible, and unstage remaining changes from the index.
 
+### Fixup target always SHA
+
+By default, git-absorb will create fixup commits with their messages pointing to the target commit's summary, and if there are duplicate summaries, will fallback to pointing to the target's SHA. Instead, can always point to the target's SHA via:
+
+```ini
+[absorb]
+    fixupTargetAlwaysSHA = true
+```
+
 ## TODO
 
 - implement force flag

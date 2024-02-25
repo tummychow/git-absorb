@@ -271,6 +271,8 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         }
     }
 
+    let target_always_sha: bool = config::fixup_target_always_sha(&repo);
+
     hunks_with_commit.sort_by_key(|h| h.dest_commit.id());
     // * apply all hunks that are going to be fixed up into `dest_commit`
     // * commit the fixup
@@ -301,11 +303,14 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
             // https://docs.rs/git2/0.7.5/src/git2/repo.rs.html#998
             // https://libgit2.org/libgit2/#HEAD/group/commit/git_commit_create
             let dest_commit_id = current.dest_commit.id().to_string();
-            let dest_commit_locator = current
-                .dest_commit
-                .summary()
-                .filter(|&msg| summary_counts[msg] == 1)
-                .unwrap_or(&dest_commit_id);
+            let dest_commit_locator = match target_always_sha {
+                true => &dest_commit_id,
+                false => current
+                    .dest_commit
+                    .summary()
+                    .filter(|&msg| summary_counts[msg] == 1)
+                    .unwrap_or(&dest_commit_id),
+            };
             let diff = repo
                 .diff_tree_to_tree(Some(&head_commit.tree()?), Some(&new_head_tree), None)?
                 .stats()?;
@@ -729,5 +734,42 @@ lines
         assert_eq!(revwalk.count(), 1);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn fixup_message_always_commit_sha_if_configured() {
+        let ctx = prepare_and_stage();
+
+        ctx.repo
+            .config()
+            .unwrap()
+            .set_bool(config::FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME, true)
+            .unwrap();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: true,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        let oids: Vec<git2::Oid> = revwalk.by_ref().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(oids.len(), 2);
+
+        let commit = ctx.repo.find_commit(oids[0]).unwrap();
+        let actual_msg = commit.summary().unwrap();
+        let expected_msg = format!("fixup! {}", oids[1]);
+        assert_eq!(actual_msg, expected_msg);
     }
 }

@@ -8,13 +8,14 @@ homepage = "https://github.com/tummychow/git-absorb"
 repository = "https://github.com/tummychow/git-absorb"
 readme = "README.md"
 license = "BSD-3-Clause"
-edition = "2018"
+edition = "2021"
 
 include = [
     "**/*.rs",
     "Cargo.*",
     "*.md",
 ]
+rust-version = "1.64.0"
 
 [[bin]]
 name = "git-absorb"

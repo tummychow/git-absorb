@@ -15,7 +15,7 @@ include = [
     "Cargo.*",
     "*.md",
 ]
-rust-version = "1.64.0"
+rust-version = "1.74.1"
 
 [[bin]]
 name = "git-absorb"
@@ -26,7 +26,8 @@ version = "0.18"
 default-features = false
 
 [dependencies]
-clap = "2.33"
+clap = { version = "4", features = ["cargo", "wrap_help"] }
+clap_complete = "4"
 slog = "2.5"
 slog-term = "2.6"
 slog-async = "2.5"

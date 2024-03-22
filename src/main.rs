@@ -4,89 +4,93 @@ extern crate clap;
 #[macro_use]
 extern crate slog;
 
-use clap::Shell;
+use clap::ArgAction;
+use clap_complete::{generate, Shell};
 use slog::Drain;
 use std::io;
 
 fn main() {
-    let args = app_from_crate!()
+    let args = command!()
         .about("Automatically absorb staged changes into your current branch")
         .arg(
-            clap::Arg::with_name("base")
+            clap::Arg::new("base")
                 .help("Use this commit as the base of the absorb stack")
-                .short("b")
-                .long("base")
-                .takes_value(true),
+                .short('b')
+                .long("base"),
         )
         .arg(
-            clap::Arg::with_name("dry-run")
+            clap::Arg::new("dry-run")
                 .help("Don't make any actual changes")
-                .short("n")
+                .short('n')
                 .long("dry-run")
-                .takes_value(false),
+                .action(ArgAction::SetTrue),
         )
         .arg(
-            clap::Arg::with_name("force")
+            clap::Arg::new("force")
                 .help("Skip safety checks")
-                .short("f")
+                .short('f')
                 .long("force")
-                .takes_value(false),
+                .action(ArgAction::SetTrue),
         )
         .arg(
-            clap::Arg::with_name("verbose")
+            clap::Arg::new("verbose")
                 .help("Display more output")
-                .short("v")
+                .short('v')
                 .long("verbose")
-                .takes_value(false),
+                .action(ArgAction::SetTrue),
         )
         .arg(
-            clap::Arg::with_name("and-rebase")
+            clap::Arg::new("and-rebase")
                 .help("Run rebase if successful")
-                .short("r")
+                .short('r')
                 .long("and-rebase")
-                .takes_value(false),
+                .action(ArgAction::SetTrue),
         )
         .arg(
-            clap::Arg::with_name("gen-completions")
+            clap::Arg::new("gen-completions")
                 .help("Generate completions")
                 .long("gen-completions")
-                .takes_value(true)
-                .possible_values(&["bash", "fish", "zsh", "powershell", "elvish"]),
+                .value_parser(["bash", "fish", "zsh", "powershell", "elvish"]),
         )
         .arg(
-            clap::Arg::with_name("whole-file")
+            clap::Arg::new("whole-file")
                 .help("Match the change against the complete file   ")
-                .short("w")
+                .short('w')
                 .long("whole-file")
-                .takes_value(false),
+                .action(ArgAction::SetTrue),
         )
         .arg(
-            clap::Arg::with_name("one-fixup-per-commit")
+            clap::Arg::new("one-fixup-per-commit")
                 .help("Only generate one fixup per commit")
-                .short("F")
+                .short('F')
                 .long("one-fixup-per-commit")
-                .takes_value(false),
+                .action(ArgAction::SetTrue),
         );
     let mut args_clone = args.clone();
     let args = args.get_matches();
 
-    if let Some(shell) = args.value_of("gen-completions") {
+    if let Some(shell) = args.get_one::<String>("gen-completions") {
         let app_name = "git-absorb";
-        match shell {
+        match shell.as_str() {
             "bash" => {
-                args_clone.gen_completions_to(app_name, Shell::Bash, &mut io::stdout());
+                generate(Shell::Bash, &mut args_clone, app_name, &mut io::stdout());
             }
             "fish" => {
-                args_clone.gen_completions_to(app_name, Shell::Fish, &mut io::stdout());
+                generate(Shell::Fish, &mut args_clone, app_name, &mut io::stdout());
             }
             "zsh" => {
-                args_clone.gen_completions_to(app_name, Shell::Zsh, &mut io::stdout());
+                generate(Shell::Zsh, &mut args_clone, app_name, &mut io::stdout());
             }
             "powershell" => {
-                args_clone.gen_completions_to(app_name, Shell::PowerShell, &mut io::stdout());
+                generate(
+                    Shell::PowerShell,
+                    &mut args_clone,
+                    app_name,
+                    &mut io::stdout(),
+                );
             }
             "elvish" => {
-                args_clone.gen_completions_to(app_name, Shell::Elvish, &mut io::stdout());
+                generate(Shell::Elvish, &mut args_clone, app_name, &mut io::stdout());
             }
             _ => unreachable!(),
         }
@@ -98,7 +102,7 @@ fn main() {
     let drain = slog_async::Async::new(drain).build().fuse();
     let drain = slog::LevelFilter::new(
         drain,
-        if args.is_present("verbose") {
+        if args.contains_id("verbose") {
             slog::Level::Debug
         } else {
             slog::Level::Info
@@ -106,7 +110,7 @@ fn main() {
     )
     .fuse();
     let mut logger = slog::Logger::root(drain, o!());
-    if args.is_present("verbose") {
+    if args.contains_id("verbose") {
         logger = logger.new(o!(
             "module" => slog::FnValue(|record| record.module()),
             "line" => slog::FnValue(|record| record.line()),
@@ -114,12 +118,12 @@ fn main() {
     }
 
     if let Err(e) = git_absorb::run(&mut git_absorb::Config {
-        dry_run: args.is_present("dry-run"),
-        force: args.is_present("force"),
-        base: args.value_of("base"),
-        and_rebase: args.is_present("and-rebase"),
-        whole_file: args.is_present("whole-file"),
-        one_fixup_per_commit: args.is_present("one-fixup-per-commit"),
+        dry_run: args.contains_id("dry-run"),
+        force: args.contains_id("force"),
+        base: args.get_one::<String>("base").map(|s| s.as_str()),
+        and_rebase: args.contains_id("and-rebase"),
+        whole_file: args.contains_id("whole-file"),
+        one_fixup_per_commit: args.contains_id("one-fixup-per-commit"),
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

@@ -102,7 +102,7 @@ fn main() {
     let drain = slog_async::Async::new(drain).build().fuse();
     let drain = slog::LevelFilter::new(
         drain,
-        if args.contains_id("verbose") {
+        if args.get_flag("verbose") {
             slog::Level::Debug
         } else {
             slog::Level::Info
@@ -110,7 +110,7 @@ fn main() {
     )
     .fuse();
     let mut logger = slog::Logger::root(drain, o!());
-    if args.contains_id("verbose") {
+    if args.get_flag("verbose") {
         logger = logger.new(o!(
             "module" => slog::FnValue(|record| record.module()),
             "line" => slog::FnValue(|record| record.line()),
@@ -118,12 +118,12 @@ fn main() {
     }
 
     if let Err(e) = git_absorb::run(&mut git_absorb::Config {
-        dry_run: args.contains_id("dry-run"),
-        force: args.contains_id("force"),
+        dry_run: args.get_flag("dry-run"),
+        force: args.get_flag("force"),
         base: args.get_one::<String>("base").map(|s| s.as_str()),
-        and_rebase: args.contains_id("and-rebase"),
-        whole_file: args.contains_id("whole-file"),
-        one_fixup_per_commit: args.contains_id("one-fixup-per-commit"),
+        and_rebase: args.get_flag("and-rebase"),
+        whole_file: args.get_flag("whole-file"),
+        one_fixup_per_commit: args.get_flag("one-fixup-per-commit"),
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

@@ -6,6 +6,7 @@ extern crate slog;
 
 use clap::ArgAction;
 use clap_complete::{generate, Shell};
+use clap_complete_nushell::Nushell;
 use slog::Drain;
 use std::io;
 
@@ -50,7 +51,7 @@ fn main() {
             clap::Arg::new("gen-completions")
                 .help("Generate completions")
                 .long("gen-completions")
-                .value_parser(["bash", "fish", "zsh", "powershell", "elvish"]),
+                .value_parser(["bash", "fish", "nushell", "zsh", "powershell", "elvish"]),
         )
         .arg(
             clap::Arg::new("whole-file")
@@ -77,6 +78,9 @@ fn main() {
             }
             "fish" => {
                 generate(Shell::Fish, &mut args_clone, app_name, &mut io::stdout());
+            }
+            "nushell" => {
+                generate(Nushell, &mut args_clone, app_name, &mut io::stdout());
             }
             "zsh" => {
                 generate(Shell::Zsh, &mut args_clone, app_name, &mut io::stdout());

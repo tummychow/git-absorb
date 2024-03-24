@@ -28,6 +28,7 @@ default-features = false
 [dependencies]
 clap = { version = "4", features = ["cargo", "wrap_help"] }
 clap_complete = "4"
+clap_complete_nushell = "4"
 slog = "2.5"
 slog-term = "2.6"
 slog-async = "2.5"

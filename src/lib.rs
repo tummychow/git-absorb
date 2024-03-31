@@ -39,7 +39,7 @@ pub fn run(config: &mut Config) -> Result<()> {
 }
 
 fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
-    let stack = stack::working_stack(&repo, config.base, config.force, config.logger)?;
+    let stack = stack::working_stack(repo, config.base, config.force, config.logger)?;
     if stack.is_empty() {
         crit!(config.logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -91,10 +91,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         }
 
         let summary_counts = stack::summary_counts(&stack);
-        (
-            stack.into_iter().zip(diffs.into_iter()).collect(),
-            summary_counts,
-        )
+        (stack.into_iter().zip(diffs).collect(), summary_counts)
     };
 
     let mut head_tree = repo.head()?.peel_to_tree()?;
@@ -188,7 +185,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
             let mut commuted_old_path = old_path;
             let mut commuted_index_hunk = isolated_hunk;
 
-            'commit: for &(ref commit, ref diff) in &stack {
+            'commit: for (commit, diff) in &stack {
                 let c_logger = config.logger.new(o!(
                     "commit" => commit.id().to_string(),
                 ));
@@ -271,7 +268,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         }
     }
 
-    let target_always_sha: bool = config::fixup_target_always_sha(&repo);
+    let target_always_sha: bool = config::fixup_target_always_sha(repo);
 
     hunks_with_commit.sort_by_key(|h| h.dest_commit.id());
     // * apply all hunks that are going to be fixed up into `dest_commit`
@@ -286,7 +283,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         .zip(hunks_with_commit.iter().skip(1).map(Some).chain([None]))
     {
         let new_head_tree = apply_hunk_to_tree(
-            &repo,
+            repo,
             &head_tree,
             &current.hunk_to_apply,
             &current.index_patch.old_path,
@@ -373,7 +370,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         assert!(number_of_parents <= 1);
 
         let mut command = Command::new("git");
-        command.args(&["rebase", "--interactive", "--autosquash", "--autostash"]);
+        command.args(["rebase", "--interactive", "--autosquash", "--autostash"]);
 
         if number_of_parents == 0 {
             command.arg("--root");

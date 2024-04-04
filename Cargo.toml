@@ -26,7 +26,7 @@ version = "0.18"
 default-features = false
 
 [dependencies]
-clap = { version = "4", features = ["cargo", "wrap_help"] }
+clap = { version = "4", features = ["cargo", "wrap_help", "derive"] }
 clap_complete = "4"
 clap_complete_nushell = "4"
 slog = "2.5"

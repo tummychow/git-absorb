@@ -50,30 +50,25 @@ fn main() {
 
     if let Some(shell) = gen_completions {
         let app_name = "git-absorb";
-        let mut args_clone = Cli::command();
+        let mut cmd = Cli::command();
         match shell.as_str() {
             "bash" => {
-                generate(Shell::Bash, &mut args_clone, app_name, &mut io::stdout());
+                generate(Shell::Bash, &mut cmd, app_name, &mut io::stdout());
             }
             "fish" => {
-                generate(Shell::Fish, &mut args_clone, app_name, &mut io::stdout());
+                generate(Shell::Fish, &mut cmd, app_name, &mut io::stdout());
             }
             "nushell" => {
-                generate(Nushell, &mut args_clone, app_name, &mut io::stdout());
+                generate(Nushell, &mut cmd, app_name, &mut io::stdout());
             }
             "zsh" => {
-                generate(Shell::Zsh, &mut args_clone, app_name, &mut io::stdout());
+                generate(Shell::Zsh, &mut cmd, app_name, &mut io::stdout());
             }
             "powershell" => {
-                generate(
-                    Shell::PowerShell,
-                    &mut args_clone,
-                    app_name,
-                    &mut io::stdout(),
-                );
+                generate(Shell::PowerShell, &mut cmd, app_name, &mut io::stdout());
             }
             "elvish" => {
-                generate(Shell::Elvish, &mut args_clone, app_name, &mut io::stdout());
+                generate(Shell::Elvish, &mut cmd, app_name, &mut io::stdout());
             }
             _ => unreachable!(),
         }

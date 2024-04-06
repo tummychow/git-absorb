@@ -1,101 +1,63 @@
 #[macro_use]
-extern crate clap;
-
-#[macro_use]
 extern crate slog;
 
-use clap::ArgAction;
+use clap::{CommandFactory, Parser as _};
 use clap_complete::{generate, Shell};
 use clap_complete_nushell::Nushell;
 use slog::Drain;
 use std::io;
 
-fn main() {
-    let args = command!()
-        .about("Automatically absorb staged changes into your current branch")
-        .arg(
-            clap::Arg::new("base")
-                .help("Use this commit as the base of the absorb stack")
-                .short('b')
-                .long("base"),
-        )
-        .arg(
-            clap::Arg::new("dry-run")
-                .help("Don't make any actual changes")
-                .short('n')
-                .long("dry-run")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            clap::Arg::new("force")
-                .help("Skip safety checks")
-                .short('f')
-                .long("force")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            clap::Arg::new("verbose")
-                .help("Display more output")
-                .short('v')
-                .long("verbose")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            clap::Arg::new("and-rebase")
-                .help("Run rebase if successful")
-                .short('r')
-                .long("and-rebase")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            clap::Arg::new("gen-completions")
-                .help("Generate completions")
-                .long("gen-completions")
-                .value_parser(["bash", "fish", "nushell", "zsh", "powershell", "elvish"]),
-        )
-        .arg(
-            clap::Arg::new("whole-file")
-                .help("Match the change against the complete file   ")
-                .short('w')
-                .long("whole-file")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            clap::Arg::new("one-fixup-per-commit")
-                .help("Only generate one fixup per commit")
-                .short('F')
-                .long("one-fixup-per-commit")
-                .action(ArgAction::SetTrue),
-        );
-    let mut args_clone = args.clone();
-    let args = args.get_matches();
+/// Automatically absorb staged changes into your current branch
+#[derive(Debug, clap::Parser)]
+struct Cli {
+    /// Use this commit as the base of the absorb stack
+    #[clap(long, short)]
+    base: Option<String>,
+    /// Don't make any actual changes
+    #[clap(long, short = 'n')]
+    dry_run: bool,
+    /// Skip safety checks
+    #[clap(long, short)]
+    force: bool,
+    /// Display more output
+    #[clap(long, short)]
+    verbose: bool,
+    /// Run rebase if successful
+    #[clap(long, short = 'r')]
+    and_rebase: bool,
+    /// Generate completions
+    #[clap(long, value_parser = ["bash", "fish", "nushell", "zsh", "powershell", "elvish"])]
+    gen_completions: Option<String>,
+    /// Match the change against the complete file
+    #[clap(long, short)]
+    whole_file: bool,
+    /// Only generate one fixup per commit
+    #[clap(long, short = 'F')]
+    one_fixup_per_commit: bool,
+}
 
-    if let Some(shell) = args.get_one::<String>("gen-completions") {
+fn main() {
+    let Cli {
+        base,
+        dry_run,
+        force,
+        verbose,
+        and_rebase,
+        gen_completions,
+        whole_file,
+        one_fixup_per_commit,
+    } = Cli::parse();
+
+    if let Some(shell) = gen_completions {
         let app_name = "git-absorb";
+        let mut cmd = Cli::command();
         match shell.as_str() {
-            "bash" => {
-                generate(Shell::Bash, &mut args_clone, app_name, &mut io::stdout());
-            }
-            "fish" => {
-                generate(Shell::Fish, &mut args_clone, app_name, &mut io::stdout());
-            }
-            "nushell" => {
-                generate(Nushell, &mut args_clone, app_name, &mut io::stdout());
-            }
-            "zsh" => {
-                generate(Shell::Zsh, &mut args_clone, app_name, &mut io::stdout());
-            }
-            "powershell" => {
-                generate(
-                    Shell::PowerShell,
-                    &mut args_clone,
-                    app_name,
-                    &mut io::stdout(),
-                );
-            }
-            "elvish" => {
-                generate(Shell::Elvish, &mut args_clone, app_name, &mut io::stdout());
-            }
+            "bash" => generate(Shell::Bash, &mut cmd, app_name, &mut io::stdout()),
+            "fish" => generate(Shell::Fish, &mut cmd, app_name, &mut io::stdout()),
+            "nushell" => generate(Nushell, &mut cmd, app_name, &mut io::stdout()),
+            "zsh" => generate(Shell::Zsh, &mut cmd, app_name, &mut io::stdout()),
+            "powershell" => generate(Shell::PowerShell, &mut cmd, app_name, &mut io::stdout()),
+            "elvish" => generate(Shell::Elvish, &mut cmd, app_name, &mut io::stdout()),
             _ => unreachable!(),
         }
         return;
@@ -106,7 +68,7 @@ fn main() {
     let drain = slog_async::Async::new(drain).build().fuse();
     let drain = slog::LevelFilter::new(
         drain,
-        if args.get_flag("verbose") {
+        if verbose {
             slog::Level::Debug
         } else {
             slog::Level::Info
@@ -114,7 +76,7 @@ fn main() {
     )
     .fuse();
     let mut logger = slog::Logger::root(drain, o!());
-    if args.get_flag("verbose") {
+    if verbose {
         logger = logger.new(o!(
             "module" => slog::FnValue(|record| record.module()),
             "line" => slog::FnValue(|record| record.line()),
@@ -122,12 +84,12 @@ fn main() {
     }
 
     if let Err(e) = git_absorb::run(&mut git_absorb::Config {
-        dry_run: args.get_flag("dry-run"),
-        force: args.get_flag("force"),
-        base: args.get_one::<String>("base").map(|s| s.as_str()),
-        and_rebase: args.get_flag("and-rebase"),
-        whole_file: args.get_flag("whole-file"),
-        one_fixup_per_commit: args.get_flag("one-fixup-per-commit"),
+        dry_run,
+        force,
+        base: base.as_deref(),
+        and_rebase,
+        whole_file,
+        one_fixup_per_commit,
         logger: &logger,
     }) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

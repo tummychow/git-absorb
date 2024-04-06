@@ -52,24 +52,12 @@ fn main() {
         let app_name = "git-absorb";
         let mut cmd = Cli::command();
         match shell.as_str() {
-            "bash" => {
-                generate(Shell::Bash, &mut cmd, app_name, &mut io::stdout());
-            }
-            "fish" => {
-                generate(Shell::Fish, &mut cmd, app_name, &mut io::stdout());
-            }
-            "nushell" => {
-                generate(Nushell, &mut cmd, app_name, &mut io::stdout());
-            }
-            "zsh" => {
-                generate(Shell::Zsh, &mut cmd, app_name, &mut io::stdout());
-            }
-            "powershell" => {
-                generate(Shell::PowerShell, &mut cmd, app_name, &mut io::stdout());
-            }
-            "elvish" => {
-                generate(Shell::Elvish, &mut cmd, app_name, &mut io::stdout());
-            }
+            "bash" => generate(Shell::Bash, &mut cmd, app_name, &mut io::stdout()),
+            "fish" => generate(Shell::Fish, &mut cmd, app_name, &mut io::stdout()),
+            "nushell" => generate(Nushell, &mut cmd, app_name, &mut io::stdout()),
+            "zsh" => generate(Shell::Zsh, &mut cmd, app_name, &mut io::stdout()),
+            "powershell" => generate(Shell::PowerShell, &mut cmd, app_name, &mut io::stdout()),
+            "elvish" => generate(Shell::Elvish, &mut cmd, app_name, &mut io::stdout()),
             _ => unreachable!(),
         }
         return;

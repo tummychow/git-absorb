@@ -22,7 +22,7 @@ name = "git-absorb"
 path = "src/main.rs"
 
 [dependencies.git2]
-version = "0.18"
+version = "0.19"
 default-features = false
 
 [dependencies]

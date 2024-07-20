@@ -9,6 +9,7 @@ use std::io;
 
 /// Automatically absorb staged changes into your current branch
 #[derive(Debug, clap::Parser)]
+#[command(version)]
 struct Cli {
     /// Use this commit as the base of the absorb stack
     #[clap(long, short)]

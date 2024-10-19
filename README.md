@@ -44,10 +44,11 @@ Alternatively, `git absorb` is available in the following system package manager
 | Homebrew and Linuxbrew      | `brew install git-absorb`                    |
 | MacPorts                    | `sudo port install git-absorb`               |
 | nixpkgs stable and unstable | `nix-env -iA nixpkgs.git-absorb`             |
-| openSUSE                    | `zypper install git-absorb`
+| openSUSE                    | `zypper install git-absorb`                  |
 | Ubuntu                      | `apt install git-absorb`                     |
 | Void Linux                  | `xbps-install -S git-absorb`                 |
 | GNU Guix                    | `guix install git-absorb`                    |
+| Windows Package Manager     | `winget install tummychow.git-absorb`        |
 
 ## Compiling from Source
 

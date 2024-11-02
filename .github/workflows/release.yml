@@ -94,20 +94,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
+          toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.target }}
 
       - name: Build release binary
-        uses: actions-rs/cargo@v1
+        uses: clechasseur/rs-cargo@v2
         with:
-          use-cross: ${{ matrix.cross }}
+          use-cross: ${{ matrix.use-cross }}
           command: build
           args: --release --verbose --target ${{ matrix.target }}
 

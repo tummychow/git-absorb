@@ -12,13 +12,13 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Upload artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: git-absorb-${{ matrix.os }}
         path: |

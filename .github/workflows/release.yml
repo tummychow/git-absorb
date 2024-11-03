@@ -68,27 +68,27 @@ jobs:
           # so we only use it for the linux targets that require other architectures/libcs
           - build: linux
             os: ubuntu-latest
-            rust: nightly
+            toolchain: nightly
             target: x86_64-unknown-linux-musl
             cross: true
           - build: linux-arm
             os: ubuntu-latest
-            rust: nightly
+            toolchain: nightly
             target: arm-unknown-linux-gnueabihf
             cross: true
           - build: macos
             os: macos-latest
-            rust: nightly
+            toolchain: nightly
             target: x86_64-apple-darwin
             cross: false
           - build: win-msvc
             os: windows-latest
-            rust: nightly
+            toolchain: nightly
             target: x86_64-pc-windows-msvc
             cross: false
           - build: win-gnu
             os: windows-latest
-            rust: nightly-x86_64-gnu
+            toolchain: nightly-x86_64-gnu
             target: x86_64-pc-windows-gnu
             cross: false
 
@@ -105,7 +105,7 @@ jobs:
       - name: Build release binary
         uses: clechasseur/rs-cargo@v2
         with:
-          use-cross: ${{ matrix.use-cross }}
+          use-cross: ${{ matrix.cross }}
           command: build
           args: --release --verbose --target ${{ matrix.target }}
 

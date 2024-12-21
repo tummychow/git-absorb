@@ -32,7 +32,9 @@ pub fn working_stack<'repo>(
 
     let base_commit = match user_provided_base {
         // https://github.com/rust-lang/rfcs/issues/1815
-        Some(commitish) => Some(repo.find_commit(repo.revparse_single(commitish)?.id())?),
+        // user_provided_base isn't guaranteed to be a commit hash, so peel until a
+        // commit is found.
+        Some(commitish) => Some(repo.revparse_single(commitish)?.peel_to_commit()?),
         None => None,
     };
 

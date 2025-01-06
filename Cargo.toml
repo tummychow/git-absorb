@@ -31,7 +31,6 @@ clap_complete = "4"
 clap_complete_nushell = "4"
 slog = "2.5"
 slog-term = "2.6"
-slog-async = "2.5"
 memchr = "2.3"
 anyhow = "1.0"
 

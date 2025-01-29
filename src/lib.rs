@@ -370,7 +370,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         assert!(number_of_parents <= 1);
 
         let mut command = Command::new("git");
-        command.args(["rebase", "--interactive", "--autosquash", "--autostash"]);
+        command.args(["rebase", "--interactive", "--autosquash", "--autostash", "--update-refs"]);
 
         if number_of_parents == 0 {
             command.arg("--root");

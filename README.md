@@ -40,6 +40,7 @@ Alternatively, `git absorb` is available in the following system package manager
 | Debian                      | `apt install git-absorb`                     |
 | DPorts                      | `pkg install git-absorb`                     |
 | Fedora                      | `dnf install git-absorb`                     |
+| Flox                        | `flox install git-absorb`                    |
 | FreeBSD Ports               | `pkg install git-absorb`                     |
 | Homebrew and Linuxbrew      | `brew install git-absorb`                    |
 | MacPorts                    | `sudo port install git-absorb`               |

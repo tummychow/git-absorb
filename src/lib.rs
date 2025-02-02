@@ -476,6 +476,12 @@ fn nothing_left_in_index(repo: &git2::Repository) -> Result<bool> {
     Ok(nothing)
 }
 
+fn something_left_in_index(repo: &git2::Repository) -> Result<bool> {
+    let stats = index_stats(repo)?;
+    let nothing = stats.files_changed() != 0;
+    Ok(nothing)
+}
+
 fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
     let head = repo.head()?.peel_to_tree()?;
     let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
@@ -565,6 +571,12 @@ lines
         ctx
     }
 
+    fn become_new_author(ctx: &Context) {
+        let mut config = ctx.repo.config().unwrap();
+        config.set_str("user.name", "nobody2").unwrap();
+        config.set_str("user.email", "nobody2@example.com").unwrap();
+    }
+
     #[test]
     fn multiple_fixups_per_commit() {
         let ctx = prepare_and_stage();
@@ -600,6 +612,60 @@ lines
         let config = Config {
             dry_run: false,
             force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: true,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn foreign_author() {
+        let ctx = prepare_and_stage();
+
+        become_new_author(&ctx);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: true,
+            logger: &logger,
+        };
+        run_with_repo(&config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+
+        assert!(something_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn foreign_author_with_force_flag() {
+        let ctx = prepare_and_stage();
+
+        become_new_author(&ctx);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: false,
+            force: true,
             base: None,
             and_rebase: false,
             whole_file: false,

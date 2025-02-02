@@ -199,6 +199,20 @@ edit your local or global \&.gitconfig and add the following section:
 .if n \{\
 .RE
 .\}
+.SS "GENERATE FIXUPS FOR COMMITS NOT AUTHORED BY YOU"
+.sp
+By default, git\-absorb will only generate fixup commits for commits that were authored by you\&. To always generate fixups for any author\(cqs commits, edit your local or global \&.gitconfig and add the following section:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+[absorb]
+    forceAuthor = true
+.fi
+.if n \{\
+.RE
+.\}
 .SH "GITHUB PROJECT"
 .sp
 https://github\&.com/tummychow/git\-absorb

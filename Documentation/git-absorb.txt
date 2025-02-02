@@ -128,6 +128,18 @@ edit your local or global `.gitconfig` and add the following section:
     maxStack=50 # Or any other reasonable value for your project
 .............................................................................
 
+GENERATE FIXUPS FOR COMMITS NOT AUTHORED BY YOU
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will only generate fixup commits for commits that were
+authored by you. To always generate fixups for any author's commits,
+edit your local or global `.gitconfig` and add the following section:
+
+.............................................................................
+[absorb]
+    forceAuthor = true
+.............................................................................
+
 GITHUB PROJECT
 --------------
 

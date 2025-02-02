@@ -50,9 +50,13 @@ FLAGS
 --dry-run::
         Don't make any actual changes
 
+--force-author::
+        Generate fixups to commits not made by you
+
 -f::
 --force::
-        Skip safety checks
+        Skip all safety checks.
+        Generate fixups to commits not made by you (as if by --force-author) and to non-branch HEADs
 
 -w::
 --whole-file::

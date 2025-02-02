@@ -2,12 +2,12 @@
 .\"     Title: git-absorb
 .\"    Author: [see the "AUTHOR" section]
 .\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
-.\"      Date: 04/06/2023
+.\"      Date: 02/02/2025
 .\"    Manual: git absorb
 .\"    Source: git-absorb 0.5.0
 .\"  Language: English
 .\"
-.TH "GIT\-ABSORB" "1" "04/06/2023" "git\-absorb 0\&.5\&.0" "git absorb"
+.TH "GIT\-ABSORB" "1" "02/02/2025" "git\-absorb 0\&.5\&.0" "git absorb"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -66,9 +66,14 @@ Run rebase if successful
 Don\(cqt make any actual changes
 .RE
 .PP
+\-\-force\-author
+.RS 4
+Generate fixups to commits not made by you
+.RE
+.PP
 \-f, \-\-force
 .RS 4
-Skip safety checks
+Skip all safety checks\&. Generate fixups to commits not made by you (as if by \-\-force\-author) and to non\-branch HEADs
 .RE
 .PP
 \-w, \-\-whole\-file

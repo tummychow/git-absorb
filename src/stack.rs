@@ -7,6 +7,7 @@ use crate::config;
 pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
     user_provided_base: Option<&str>,
+    force_author: bool,
     force: bool,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>> {
@@ -69,11 +70,11 @@ pub fn working_stack<'repo>(
             break;
         }
         if let Ok(ref sig) = sig {
-            if !force
+            if !force_author
                 && (commit.author().name_bytes() != sig.name_bytes()
                     || commit.author().email_bytes() != sig.email_bytes())
             {
-                warn!(logger, "Will not fix up past commits not authored by you, use --force to override";
+                warn!(logger, "Will not fix up past commits not authored by you, use --force-author to override";
                       "commit" => commit.id().to_string());
                 break;
             }
@@ -194,7 +195,7 @@ mod tests {
 
         assert_stack_matches_chain(
             1,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &commits,
         );
     }
@@ -210,6 +211,7 @@ mod tests {
             &working_stack(
                 &repo,
                 Some(&commits[0].id().to_string()),
+                false,
                 false,
                 &empty_slog(),
             )
@@ -232,7 +234,7 @@ mod tests {
 
         assert_stack_matches_chain(
             config::MAX_STACK + 1,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &commits,
         );
     }
@@ -249,7 +251,7 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &new_commits,
         );
     }
@@ -267,7 +269,7 @@ mod tests {
 
         assert_stack_matches_chain(
             2,
-            &working_stack(&repo, None, false, &empty_slog()).unwrap(),
+            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
             &commits,
         );
     }

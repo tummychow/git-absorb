@@ -134,7 +134,6 @@ By default, git-absorb will create fixup commits with their messages pointing to
 
 ## TODO
 
-- implement force flag
 - implement remote default branch check
 - add smaller force flags to disable individual safety checks
 - stop using `failure::err_msg` and ensure all error output is actionable by the user

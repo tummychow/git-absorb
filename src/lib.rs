@@ -11,6 +11,7 @@ use std::io::Write;
 
 pub struct Config<'a> {
     pub dry_run: bool,
+    pub force_author: bool,
     pub force: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
@@ -38,8 +39,17 @@ pub fn run(config: &mut Config) -> Result<()> {
     run_with_repo(config, &repo)
 }
 
-fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
-    let stack = stack::working_stack(repo, config.base, config.force, config.logger)?;
+fn run_with_repo(config: &mut Config, repo: &git2::Repository) -> Result<()> {
+    // have force flag enable all force* flags
+    config.force_author |= config.force;
+
+    let stack = stack::working_stack(
+        repo,
+        config.base,
+        config.force_author,
+        config.force,
+        config.logger,
+    )?;
     if stack.is_empty() {
         crit!(config.logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -584,8 +594,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -593,7 +604,7 @@ lines
             one_fixup_per_commit: false,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -609,8 +620,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -618,7 +630,7 @@ lines
             one_fixup_per_commit: true,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -636,8 +648,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -645,13 +658,41 @@ lines
             one_fixup_per_commit: true,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
 
         assert!(something_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn foreign_author_with_force_author_flag() {
+        let ctx = prepare_and_stage();
+
+        become_new_author(&ctx);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let mut config = Config {
+            dry_run: false,
+            force_author: true,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: true,
+            logger: &logger,
+        };
+        run_with_repo(&mut config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
     #[test]
@@ -663,8 +704,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: true,
             base: None,
             and_rebase: false,
@@ -672,7 +714,7 @@ lines
             one_fixup_per_commit: true,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -711,8 +753,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -720,7 +763,7 @@ lines
             one_fixup_per_commit: false,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -747,8 +790,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -756,7 +800,7 @@ lines
             one_fixup_per_commit: false,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -781,8 +825,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -790,7 +835,7 @@ lines
             one_fixup_per_commit: false,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -812,8 +857,9 @@ lines
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
+        let mut config = Config {
             dry_run: false,
+            force_author: false,
             force: false,
             base: None,
             and_rebase: false,
@@ -821,7 +867,7 @@ lines
             one_fixup_per_commit: true,
             logger: &logger,
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&mut config, &ctx.repo).unwrap();
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
 
         let mut revwalk = ctx.repo.revwalk().unwrap();

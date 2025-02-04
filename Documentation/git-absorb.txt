@@ -50,9 +50,13 @@ FLAGS
 --dry-run::
         Don't make any actual changes
 
+--force-author::
+        Generate fixups to commits not made by you
+
 -f::
 --force::
-        Skip safety checks
+        Skip all safety checks.
+        Generate fixups to commits not made by you (as if by --force-author) and to non-branch HEADs
 
 -w::
 --whole-file::
@@ -122,6 +126,18 @@ edit your local or global `.gitconfig` and add the following section:
 .............................................................................
 [absorb]
     maxStack=50 # Or any other reasonable value for your project
+.............................................................................
+
+GENERATE FIXUPS FOR COMMITS NOT AUTHORED BY YOU
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will only generate fixup commits for commits that were
+authored by you. To always generate fixups for any author's commits,
+edit your local or global `.gitconfig` and add the following section:
+
+.............................................................................
+[absorb]
+    forceAuthor = true
 .............................................................................
 
 GITHUB PROJECT

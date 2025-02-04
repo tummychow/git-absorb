@@ -102,6 +102,17 @@ edit your local or global `.gitconfig` and add the following section
     maxStack=50 # Or any other reasonable value for your project
 ```
 
+### Generate fixups for commits not authored by you
+
+By default, git-absorb will only generate fixup commits for commits that were authored by you.
+Instead, use the `--force-author` flag to generate fixup commits for commits written by any author.
+To always have this behavior, set
+
+```ini
+[absorb]
+    forceAuthor = true
+```
+
 ### One fixup per fixable commit
 
 By default, git-absorb will generate separate fixup commits for every absorbable hunk. Instead, can use the `-F` flag to create only 1 fixup commit for all hunks that absorb into the same commit.
@@ -134,7 +145,6 @@ By default, git-absorb will create fixup commits with their messages pointing to
 
 ## TODO
 
-- implement force flag
 - implement remote default branch check
 - add smaller force flags to disable individual safety checks
 - stop using `failure::err_msg` and ensure all error output is actionable by the user

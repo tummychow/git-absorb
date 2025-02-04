@@ -17,7 +17,10 @@ struct Cli {
     /// Don't make any actual changes
     #[clap(long, short = 'n')]
     dry_run: bool,
-    /// Skip safety checks
+    /// Generate fixups to commits not made by you
+    #[clap(long)]
+    force_author: bool,
+    /// Skip all safety checks; generate fixups to commits not made by you (as if by --force-author) and to non-branch HEADs
     #[clap(long, short)]
     force: bool,
     /// Display more output
@@ -41,6 +44,7 @@ fn main() {
     let Cli {
         base,
         dry_run,
+        force_author,
         force,
         verbose,
         and_rebase,
@@ -87,6 +91,7 @@ fn main() {
 
     if let Err(e) = git_absorb::run(&mut git_absorb::Config {
         dry_run,
+        force_author,
         force,
         base: base.as_deref(),
         and_rebase,

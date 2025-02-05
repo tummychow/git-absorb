@@ -730,7 +730,8 @@ lines
 
         become_new_author(&ctx);
 
-        ctx.repo.config()
+        ctx.repo
+            .config()
             .unwrap()
             .set_str("absorb.forceAuthor", "true")
             .unwrap();

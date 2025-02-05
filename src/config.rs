@@ -23,7 +23,7 @@ pub fn max_stack(repo: &git2::Repository) -> usize {
     }
 }
 
-pub fn force_author(repo: &git2::Repository)  -> bool {
+pub fn force_author(repo: &git2::Repository) -> bool {
     match repo
         .config()
         .and_then(|config| config.get_bool(FORCE_AUTHOR_CONFIG_NAME))

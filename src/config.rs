@@ -27,8 +27,15 @@ pub fn unify<'config>(config: &'config Config, repo: &Repository) -> Config<'con
         // e.g. user may want to overwrite a config value with
         // --no-one-fixup-per-commit -- then, defaulting to the config value
         // like we do here is no longer sufficient. but until then, this is fine.
-        one_fixup_per_commit: config.one_fixup_per_commit || one_fixup_per_commit(&repo),
-        force_author: config.force_author || config.force || force_author(&repo),
+        one_fixup_per_commit: config.one_fixup_per_commit
+            || bool_value(
+                &repo,
+                ONE_FIXUP_PER_COMMIT_CONFIG_NAME,
+                ONE_FIXUP_PER_COMMIT_DEFAULT,
+            ),
+        force_author: config.force_author
+            || config.force
+            || bool_value(&repo, FORCE_AUTHOR_CONFIG_NAME, FORCE_AUTHOR_DEFAULT),
         ..*config
     }
 }
@@ -43,42 +50,28 @@ pub fn max_stack(repo: &git2::Repository) -> usize {
     }
 }
 
-fn force_author(repo: &git2::Repository) -> bool {
-    match repo
-        .config()
-        .and_then(|config| config.get_bool(FORCE_AUTHOR_CONFIG_NAME))
-    {
-        Ok(force_author) => force_author,
-        _ => FORCE_AUTHOR_DEFAULT,
-    }
-}
-
-fn one_fixup_per_commit(repo: &git2::Repository) -> bool {
-    match repo
-        .config()
-        .and_then(|config| config.get_bool(ONE_FIXUP_PER_COMMIT_CONFIG_NAME))
-    {
-        Ok(one_commit_per_fixup) => one_commit_per_fixup,
-        _ => ONE_FIXUP_PER_COMMIT_DEFAULT,
-    }
-}
-
 pub fn auto_stage_if_nothing_staged(repo: &git2::Repository) -> bool {
-    match repo
-        .config()
-        .and_then(|config| config.get_bool(AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME))
-    {
-        Ok(val) => val,
-        _ => AUTO_STAGE_IF_NOTHING_STAGED_DEFAULT,
-    }
+    bool_value(
+        &repo,
+        AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME,
+        AUTO_STAGE_IF_NOTHING_STAGED_DEFAULT,
+    )
 }
 
 pub fn fixup_target_always_sha(repo: &git2::Repository) -> bool {
+    bool_value(
+        &repo,
+        FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME,
+        FIXUP_TARGET_ALWAYS_SHA_DEFAULT,
+    )
+}
+
+fn bool_value(repo: &Repository, setting_name: &str, default_value: bool) -> bool {
     match repo
         .config()
-        .and_then(|config| config.get_bool(FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME))
+        .and_then(|config| config.get_bool(setting_name))
     {
-        Ok(val) => val,
-        _ => FIXUP_TARGET_ALWAYS_SHA_DEFAULT,
+        Ok(value) => value,
+        _ => default_value,
     }
 }

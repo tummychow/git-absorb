@@ -52,9 +52,39 @@ jobs:
           tag_name: ${{ env.GA_VERSION }}
           release_name: ${{ env.GA_VERSION }}
 
+  build-man-page:
+    name: build-man-page
+    needs: ['create-release']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup environment
+        run: |
+          sudo apt-get update
+          sudo apt-get --assume-yes --no-install-recommends install asciidoc
+      - name: Build from asciidoc
+        env:
+          GA_VERSION: ${{ needs.create-release.outputs.GA_VERSION }}
+        working-directory: ./Documentation
+        run: make
+      - name: Upload man page as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: Documentation/git-absorb.1
+          name: git-absorb.1
+      - name: Attach man page to release
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: Documentation/git-absorb.1
+          asset_name: git-absorb.1
+          asset_content_type: application/octet-stream
+
   build-release:
     name: build-release
-    needs: ['create-release']
+    needs: ['create-release', 'build-man-page']
     runs-on: ${{ matrix.os }}
     env:
       # Emit backtraces on panics.
@@ -121,6 +151,12 @@ jobs:
             rustembedded/cross:arm-unknown-linux-gnueabihf \
             arm-linux-gnueabihf-strip \
             /target/arm-unknown-linux-gnueabihf/release/git-absorb
+
+      - name: Download man page
+        uses: actions/download-artifact@v4
+        with:
+          name: git-absorb.1
+          path: Documentation
 
       - name: Build archive
         shell: bash

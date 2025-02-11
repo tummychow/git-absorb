@@ -1,14 +1,16 @@
 # The way this works is the following:
 #
-# The create-release job runs purely to initialize the GitHub release itself
-# and to output upload_url for the following job.
+# The create-release job runs purely to initialize the GitHub release itself.
 #
-# The build-release job runs only once create-release is finished. It gets the
-# release upload URL from create-release job outputs, then builds the release
-# executables for each supported platform and attaches them as release assets
-# to the previously created release.
+# The build-man-page job runs once create-release is finished.
+# It builds the man page and attaches it as a release asset to the previously
+# created release.
 #
-# The key here is that we create the release only once.
+# The build-release job runs only once build-man-page is finished. It downloads
+# the man page, then builds the release executables for each supported platform
+# and attaches them to the previously created release.
+#
+# The key here is that we create the release and man page only once.
 #
 # Reference:
 # https://eugene-babichenko.github.io/blog/2020/05/09/github-actions-cross-platform-auto-releases/
@@ -43,14 +45,12 @@ jobs:
           echo "GA_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           echo "version is: ${{ env.GA_VERSION }}"
       - name: Create GitHub release
-        # Todo: Maybe replace it with https://github.com/softprops/action-gh-release to generate a nice changelog?
+        # Todo: Generate a nice changelog using https://github.com/softprops/action-gh-release
         id: release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
+          name: ${{ env.GA_VERSION }}
           tag_name: ${{ env.GA_VERSION }}
-          release_name: ${{ env.GA_VERSION }}
 
   build-man-page:
     name: build-man-page
@@ -73,14 +73,10 @@ jobs:
           path: Documentation/git-absorb.1
           name: git-absorb.1
       - name: Attach man page to release
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: Documentation/git-absorb.1
-          asset_name: git-absorb.1
-          asset_content_type: application/octet-stream
+          name: ${{ needs.create-release.outputs.GA_VERSION }}
+          files: Documentation/git-absorb.1
 
   build-release:
     name: build-release
@@ -179,11 +175,7 @@ jobs:
           fi
 
       - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.ASSET }}
-          asset_name: ${{ env.ASSET }}
-          asset_content_type: application/octet-stream
+          name: ${{ needs.create-release.outputs.GA_VERSION }}
+          files: ${{ env.ASSET }}

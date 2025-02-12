@@ -93,63 +93,11 @@ Note: `cargo install` does not currently know how to install manpages ([cargo#27
 
 For each hunk in the index, `git absorb` will check if that hunk commutes with the last commit, then the one before that, etc. When it finds a commit that does not commute with the hunk, it infers that this is the right parent commit for this change, and the hunk is turned into a fixup commit. If the hunk commutes with all commits in the range, it means we have not found a suitable parent commit for this change; a warning is displayed, and this hunk remains uncommitted in the index. 
 
-## Configuration
+## Documentation
 
-### Stack size
+For additional information about git-absorb, including all arguments and configuration options, see [Documentation/git-absorb.adoc](Documentation/git-absorb.adoc),
+or the git-absorb manual page.
 
-When run without `--base`, git-absorb will only search for candidate commits to fixup within a certain range (by default 10). If you get an error like this:
-
-```
-WARN stack limit reached, limit: 10
-```
-
-edit your local or global `.gitconfig` and add the following section
-
-```ini
-[absorb]
-    maxStack=50 # Or any other reasonable value for your project
-```
-
-### Generate fixups for commits not authored by you
-
-By default, git-absorb will only generate fixup commits for commits that were authored by you.
-Instead, use the `--force-author` flag to generate fixup commits for commits written by any author.
-To always have this behavior, set
-
-```ini
-[absorb]
-    forceAuthor = true
-```
-
-### One fixup per fixable commit
-
-By default, git-absorb will generate separate fixup commits for every absorbable hunk. Instead, can use the `-F` flag to create only 1 fixup commit for all hunks that absorb into the same commit.
-To always have this behavior, set
-
-```ini
-[absorb]
-    oneFixupPerCommit = true
-```
-
-### Auto-stage all changes if nothing staged
-
-By default, git-absorb will only consider files that you've staged to the index via `git add`. However, sometimes one wants to try and absorb from all changes, which would require to stage them first via `git add .`. To avoid this extra step, set
-
-```ini
-[absorb]
-    autoStageIfNothingStaged = true
-```
-
-which tells git-absorb, when no changes are staged, to auto-stage them all, create fixup commits where possible, and unstage remaining changes from the index.
-
-### Fixup target always SHA
-
-By default, git-absorb will create fixup commits with their messages pointing to the target commit's summary, and if there are duplicate summaries, will fall back to pointing to the target's SHA. Instead, can always point to the target's SHA via:
-
-```ini
-[absorb]
-    fixupTargetAlwaysSHA = true
-```
 
 ## TODO
 

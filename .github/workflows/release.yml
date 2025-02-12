@@ -162,7 +162,7 @@ jobs:
           mkdir -p "$staging"/doc
 
           cp {README.md,LICENSE.md} "$staging/"
-          cp Documentation/{git-absorb.1,git-absorb.txt} "$staging/doc/"
+          cp Documentation/{git-absorb.1,git-absorb.adoc} "$staging/doc/"
 
           if [[ "${{ matrix.target }}" =~ .*windows.* ]]; then
             cp "target/${{ matrix.target }}/release/git-absorb.exe" "$staging/"

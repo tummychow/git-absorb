@@ -53,6 +53,10 @@ FLAGS
 --force-author::
         Generate fixups to commits not made by you
 
+-F::
+--one-fixup-per-commit::
+        Only generate one fixup per commit
+
 -f::
 --force::
         Skip all safety checks.

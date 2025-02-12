@@ -144,7 +144,7 @@ which tells git-absorb, when no changes are staged, to auto-stage them all, crea
 
 ### Fixup target always SHA
 
-By default, git-absorb will create fixup commits with their messages pointing to the target commit's summary, and if there are duplicate summaries, will fallback to pointing to the target's SHA. Instead, can always point to the target's SHA via:
+By default, git-absorb will create fixup commits with their messages pointing to the target commit's summary, and if there are duplicate summaries, will fall back to pointing to the target's SHA. Instead, can always point to the target's SHA via:
 
 ```ini
 [absorb]

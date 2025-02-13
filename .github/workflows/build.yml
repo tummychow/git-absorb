@@ -24,3 +24,10 @@ jobs:
         path: |
           target/release/git-absorb
           target/release/git-absorb.exe
+
+  check-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check format
+        run: cargo fmt --check

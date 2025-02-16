@@ -1,9 +1,9 @@
 build-manpage: git-absorb.1
 
-git-absorb.1: git-absorb.txt
+git-absorb.1: git-absorb.adoc
 	$(if $(shell which a2x),,$(error "No a2x in PATH; install asciidoc."))
 	$(info Building manpage. This may take a few moments...)
-	a2x -L -d manpage -f manpage git-absorb.txt --attribute man-version=${GA_VERSION}
+	a2x -L -d manpage -f manpage git-absorb.adoc --attribute man-version=${GA_VERSION}
 
 clean:
 	rm -f git-absorb.1 git-absorb.xml

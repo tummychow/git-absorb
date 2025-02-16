@@ -53,6 +53,10 @@ FLAGS
 --force-author::
         Generate fixups to commits not made by you
 
+-F::
+--one-fixup-per-commit::
+        Only generate one fixup per commit
+
 -f::
 --force::
         Skip all safety checks.
@@ -82,6 +86,10 @@ OPTIONS
 --base <base>::
         Use this commit as the base of the absorb stack
 
+--gen-completions <SHELL>::
+        Generate completions
+        [possible values: bash, fish, nushell, zsh, powershell, elvish]
+
 USAGE
 -----
 
@@ -94,18 +102,14 @@ SHA of the commit it should be squashed into.
 
 3. If you are satisfied with the output, `git rebase -i --autosquash` to
 squash the `fixup!` commits into their predecessors. You can set the
-[GIT_SEQUENCE_EDITOR][] environment variable if you don't need to edit
-the rebase TODO file.
+https://stackoverflow.com/a/29094904[GIT_SEQUENCE_EDITOR] environment
+variable if you don't need to edit the rebase TODO file.
 
 4. If you are not satisfied (or if something bad happened), `git reset
 --soft` to the pre-absorption commit to recover your old state. (You can
-find the commit in question with `git reflog`.) And if you think `git
-absorb` is at fault, please [file an issue][].
-
-.............................................................................
-[GIT_SEQUENCE_EDITOR]: https://stackoverflow.com/a/29094904
-[file an issue]: https://github.com/tummychow/git-absorb/issues/new
-.............................................................................
+find the commit in question with `git reflog`.) And if you think
+`git absorb` is at fault, please
+https://github.com/tummychow/git-absorb/issues/new[file an issue].
 
 CONFIGURATION
 -------------
@@ -126,6 +130,49 @@ edit your local or global `.gitconfig` and add the following section:
 .............................................................................
 [absorb]
     maxStack=50 # Or any other reasonable value for your project
+.............................................................................
+
+ONE FIXUP PER FIXABLE COMMIT
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will generate separate fixup commits for every
+absorbable hunk. To always generate only 1 fixup commit for all hunks that
+absorb into the same commit, edit your local or global `.gitconfig` and add
+the following section:
+
+.............................................................................
+[absorb]
+    oneFixupPerCommit = true
+.............................................................................
+
+AUTO-STAGE ALL CHANGES IF NOTHING STAGED
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will only consider files that you've staged to the index
+via `git add`. However, sometimes one wants to try and absorb from all changes,
+which would require to stage them first via `git add .`. To avoid this extra
+step, set
+
+.............................................................................
+[absorb]
+    autoStageIfNothingStaged = true
+.............................................................................
+
+which tells git-absorb, when no changes are staged, to auto-stage them all,
+create fixup commits where possible, and unstage remaining changes from the
+index.
+
+FIXUP TARGET ALWAYS SHA
+~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will create fixup commits with their messages pointing
+to the target commit's summary, and if there are duplicate summaries, will
+fall back to pointing to the target's SHA. Instead, can always point to the
+target's SHA via:
+
+.............................................................................
+[absorb]
+    fixupTargetAlwaysSHA = true
 .............................................................................
 
 GENERATE FIXUPS FOR COMMITS NOT AUTHORED BY YOU

@@ -30,7 +30,7 @@ struct Cli {
     #[clap(long, short = 'r')]
     and_rebase: bool,
     /// Generate completions
-    #[clap(long, value_parser = ["bash", "fish", "nushell", "zsh", "powershell", "elvish"])]
+    #[clap(long, value_name = "SHELL", value_parser = ["bash", "fish", "nushell", "zsh", "powershell", "elvish"])]
     gen_completions: Option<String>,
     /// Match the change against the complete file
     #[clap(long, short)]

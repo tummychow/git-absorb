@@ -556,7 +556,7 @@ mod tests {
             base: None,
             and_rebase: false,
             whole_file: false,
-            one_fixup_per_commit: true,
+            one_fixup_per_commit: false,
             logger: &logger,
         };
         run_with_repo(&config, &ctx.repo).unwrap();
@@ -584,14 +584,14 @@ mod tests {
             base: None,
             and_rebase: false,
             whole_file: false,
-            one_fixup_per_commit: true,
+            one_fixup_per_commit: false,
             logger: &logger,
         };
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 2);
+        assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
@@ -612,14 +612,14 @@ mod tests {
             base: None,
             and_rebase: false,
             whole_file: false,
-            one_fixup_per_commit: true,
+            one_fixup_per_commit: false,
             logger: &logger,
         };
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 2);
+        assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
@@ -646,14 +646,14 @@ mod tests {
             base: None,
             and_rebase: false,
             whole_file: false,
-            one_fixup_per_commit: true,
+            one_fixup_per_commit: false,
             logger: &logger,
         };
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 2);
+        assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
@@ -799,7 +799,7 @@ mod tests {
             base: None,
             and_rebase: false,
             whole_file: false,
-            one_fixup_per_commit: true,
+            one_fixup_per_commit: false,
             logger: &logger,
         };
         run_with_repo(&config, &ctx.repo).unwrap();
@@ -809,11 +809,11 @@ mod tests {
         revwalk.push_head().unwrap();
 
         let oids: Vec<git2::Oid> = revwalk.by_ref().collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(oids.len(), 2);
+        assert_eq!(oids.len(), 3);
 
         let commit = ctx.repo.find_commit(oids[0]).unwrap();
         let actual_msg = commit.summary().unwrap();
-        let expected_msg = format!("fixup! {}", oids[1]);
+        let expected_msg = format!("fixup! {}", oids.last().unwrap());
         assert_eq!(actual_msg, expected_msg);
     }
 }

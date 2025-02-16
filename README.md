@@ -63,12 +63,20 @@ Then `cargo install git-absorb`. Make sure that `$CARGO_HOME/bin` is on your `$P
 
 Note that `git absorb` does _not_ use the system libgit2. This means you do not need to have libgit2 installed to build or run it. However, this does mean you have to be able to build libgit2. (Due to [recent changes](https://github.com/alexcrichton/git2-rs/commit/76f4b74aef2bc2a54906ddcbf7fbe0018936a69d) in the git2 crate, CMake is no longer needed to build it.)
 
-Note: `cargo install` does not currently know how to install manpages ([cargo#2729](https://github.com/rust-lang/cargo/issues/2729)), so if you use `cargo` for installation then `git absorb --help` will not work. Here is a manual workaround, assuming your system has a `~/.local/share/man/man1` directory that `man --path` knows about:
+Note: `cargo install` does not currently know how to install manpages ([cargo#2729](https://github.com/rust-lang/cargo/issues/2729)), so if you use `cargo` for installation then `git absorb --help` will not work. There are two manual workarounds, assuming your system has a `~/.local/share/man/man1` directory that `man --path` knows about:
 
-```
-wget https://raw.githubusercontent.com/tummychow/git-absorb/master/Documentation/git-absorb.1
-mv git-absorb.1 ~/.local/share/man/man1
-```
+1. build the man page from source and copy
+   This requires that the [a2x](https://asciidoc-py.github.io/a2x.1.html) tool be installed on your system.
+   ```bash
+   cd ./Documentation
+   make
+   mv git-absorb.1 ~/.local/share/man/man1
+   ```
+2. download a recently-built man page
+   1. find a recent build as in [Installing](#installing) above
+   2. download the `git-absorb.1` file and unzip
+   3. move it to `~/.local/share/man/man1`
+
 
 ## Usage
 

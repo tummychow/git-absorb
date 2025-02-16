@@ -1,5 +1,5 @@
 :man source:   git-absorb
-:man version:  0.5.0
+:man version:  {man-version}
 :man manual:   git absorb
 
 git-absorb(1)

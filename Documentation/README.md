@@ -1,7 +1,7 @@
 git-absorb manual
 =================
 
-This project's man page `git-absorb.1.gz` can be generated from `git-absorb.txt`
+This project's man page `git-absorb.1` can be generated from `git-absorb.txt`
 by running `make`.
 
 Build dependencies

@@ -495,16 +495,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -522,14 +513,8 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
             one_fixup_per_commit: true,
-            logger: &logger,
+            ..default_config(&logger)
         };
         run_with_repo(&config, &ctx.repo).unwrap();
 
@@ -549,16 +534,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -578,14 +554,8 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
             force_author: true,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
+            ..default_config(&logger)
         };
         run_with_repo(&config, &ctx.repo).unwrap();
 
@@ -606,14 +576,8 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
-            force_author: false,
             force: true,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
+            ..default_config(&logger)
         };
         run_with_repo(&config, &ctx.repo).unwrap();
 
@@ -639,16 +603,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -688,16 +643,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -725,16 +671,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -760,16 +697,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -792,16 +720,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
+        let config = default_config(&logger);
         run_with_repo(&config, &ctx.repo).unwrap();
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
 
@@ -815,5 +734,18 @@ mod tests {
         let actual_msg = commit.summary().unwrap();
         let expected_msg = format!("fixup! {}", oids.last().unwrap());
         assert_eq!(actual_msg, expected_msg);
+    }
+
+    pub fn default_config(logger: &slog::Logger) -> Config {
+        Config {
+            dry_run: false,
+            force_author: false,
+            force: false,
+            base: None,
+            and_rebase: false,
+            whole_file: false,
+            one_fixup_per_commit: false,
+            logger,
+        }
     }
 }

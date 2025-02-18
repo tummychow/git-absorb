@@ -474,12 +474,6 @@ fn nothing_left_in_index(repo: &git2::Repository) -> Result<bool> {
     Ok(nothing)
 }
 
-fn something_left_in_index(repo: &git2::Repository) -> Result<bool> {
-    let stats = index_stats(repo)?;
-    let nothing = stats.files_changed() != 0;
-    Ok(nothing)
-}
-
 fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
     let head = repo.head()?.peel_to_tree()?;
     let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
@@ -489,95 +483,14 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     use super::*;
-
-    struct Context {
-        repo: git2::Repository,
-        dir: tempfile::TempDir,
-    }
-
-    impl Context {
-        fn join(&self, p: &Path) -> PathBuf {
-            self.dir.path().join(p)
-        }
-    }
-
-    /// Prepare a fresh git repository with an initial commit and a file.
-    fn prepare_repo() -> (Context, PathBuf) {
-        let dir = tempfile::tempdir().unwrap();
-        let repo = git2::Repository::init(dir.path()).unwrap();
-
-        let path = PathBuf::from("test-file.txt");
-        std::fs::write(
-            dir.path().join(&path),
-            br#"
-line
-line
-
-more
-lines
-"#,
-        )
-        .unwrap();
-
-        // make the borrow-checker happy by introducing a new scope
-        {
-            let tree = add(&repo, &path);
-            let signature = repo
-                .signature()
-                .or_else(|_| git2::Signature::now("nobody", "nobody@example.com"))
-                .unwrap();
-            repo.commit(
-                Some("HEAD"),
-                &signature,
-                &signature,
-                "Initial commit.",
-                &tree,
-                &[],
-            )
-            .unwrap();
-        }
-
-        (Context { repo, dir }, path)
-    }
-
-    /// Stage the changes made to `path`.
-    fn add<'r>(repo: &'r git2::Repository, path: &Path) -> git2::Tree<'r> {
-        let mut index = repo.index().unwrap();
-        index.add_path(&path).unwrap();
-        index.write().unwrap();
-
-        let tree_id = index.write_tree_to(&repo).unwrap();
-        repo.find_tree(tree_id).unwrap()
-    }
-
-    /// Prepare an empty repo, and stage some changes.
-    fn prepare_and_stage() -> Context {
-        let (ctx, file_path) = prepare_repo();
-
-        // add some lines to our file
-        let path = ctx.join(&file_path);
-        let contents = std::fs::read_to_string(&path).unwrap();
-        let modifications = format!("new_line1\n{contents}\nnew_line2");
-        std::fs::write(&path, &modifications).unwrap();
-
-        // stage it
-        add(&ctx.repo, &file_path);
-
-        ctx
-    }
-
-    fn become_new_author(ctx: &Context) {
-        let mut config = ctx.repo.config().unwrap();
-        config.set_str("user.name", "nobody2").unwrap();
-        config.set_str("user.email", "nobody2@example.com").unwrap();
-    }
+    mod repo_utils;
 
     #[test]
     fn multiple_fixups_per_commit() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -603,7 +516,7 @@ lines
 
     #[test]
     fn one_fixup_per_commit() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -629,9 +542,9 @@ lines
 
     #[test]
     fn foreign_author() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
-        become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -651,15 +564,15 @@ lines
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
-
-        assert!(something_left_in_index(&ctx.repo).unwrap());
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
     }
 
     #[test]
     fn foreign_author_with_force_author_flag() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
-        become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -685,9 +598,9 @@ lines
 
     #[test]
     fn foreign_author_with_force_flag() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
-        become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -713,9 +626,9 @@ lines
 
     #[test]
     fn foreign_author_with_force_author_config() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
-        become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx);
 
         ctx.repo
             .config()
@@ -745,7 +658,7 @@ lines
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
-    fn autostage_common(ctx: &Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
+    fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);
         let contents = std::fs::read_to_string(&path).unwrap();
@@ -761,7 +674,7 @@ lines
 
     #[test]
     fn autostage_if_index_was_empty() {
-        let (ctx, file_path) = prepare_repo();
+        let (ctx, file_path) = repo_utils::prepare_repo();
 
         // requires enabled config var
         ctx.repo
@@ -796,7 +709,7 @@ lines
 
     #[test]
     fn do_not_autostage_if_index_was_not_empty() {
-        let (ctx, file_path) = prepare_repo();
+        let (ctx, file_path) = repo_utils::prepare_repo();
 
         // enable config var
         ctx.repo
@@ -807,7 +720,7 @@ lines
 
         let (_, fp2) = autostage_common(&ctx, &file_path);
         // we stage the extra file - should stay in index
-        add(&ctx.repo, &fp2);
+        repo_utils::add(&ctx.repo, &fp2);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -833,7 +746,7 @@ lines
 
     #[test]
     fn do_not_autostage_if_not_enabled_by_config_var() {
-        let (ctx, file_path) = prepare_repo();
+        let (ctx, file_path) = repo_utils::prepare_repo();
 
         // disable config var
         ctx.repo
@@ -868,7 +781,7 @@ lines
 
     #[test]
     fn fixup_message_always_commit_sha_if_configured() {
-        let ctx = prepare_and_stage();
+        let ctx = repo_utils::prepare_and_stage();
 
         ctx.repo
             .config()

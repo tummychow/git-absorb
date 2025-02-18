@@ -474,12 +474,6 @@ fn nothing_left_in_index(repo: &git2::Repository) -> Result<bool> {
     Ok(nothing)
 }
 
-fn something_left_in_index(repo: &git2::Repository) -> Result<bool> {
-    let stats = index_stats(repo)?;
-    let nothing = stats.files_changed() != 0;
-    Ok(nothing)
-}
-
 fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
     let head = repo.head()?.peel_to_tree()?;
     let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
@@ -651,8 +645,8 @@ lines
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
-
-        assert!(something_left_in_index(&ctx.repo).unwrap());
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
     }
 
     #[test]

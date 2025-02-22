@@ -624,6 +624,27 @@ mod tests {
         assert!(is_something_in_index);
     }
 
+    #[test]
+    fn detached_head_pointing_at_branch_with_force_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 1); // nothing was committed
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);

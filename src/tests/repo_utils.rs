@@ -81,3 +81,18 @@ pub fn become_new_author(repo: &git2::Repository) {
     config.set_str("user.name", "nobody2").unwrap();
     config.set_str("user.email", "nobody2@example.com").unwrap();
 }
+
+/// Detach HEAD from the current branch.
+pub fn detach_head(repo: &git2::Repository) {
+    let head = repo.head().unwrap();
+    let head_commit = head.peel_to_commit().unwrap();
+    repo.set_head_detached(head_commit.id()).unwrap();
+}
+
+/// Delete the named branch from the repository.
+pub fn delete_branch(repo: &git2::Repository, branch_name: &str) {
+    let mut branch = repo
+        .find_branch(branch_name, git2::BranchType::Local)
+        .unwrap();
+    branch.delete().unwrap();
+}

@@ -603,6 +603,69 @@ mod tests {
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
+    #[test]
+    fn detached_head() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let result = run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo);
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "HEAD is not a branch, use --force to override"
+        );
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_pointing_at_branch_with_force_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 1); // nothing was committed
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_with_force_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);

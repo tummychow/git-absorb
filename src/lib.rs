@@ -645,6 +645,23 @@ mod tests {
         assert!(is_something_in_index);
     }
 
+    #[test]
+    fn attached_head_pointing_at_commit_on_a_second_branch() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::add_branch(&ctx.repo, "second-branch");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 1); // nothing was committed
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);

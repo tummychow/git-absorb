@@ -88,3 +88,11 @@ pub fn detach_head(ctx: &Context) {
     let head_commit = head.peel_to_commit().unwrap();
     ctx.repo.set_head_detached(head_commit.id()).unwrap();
 }
+
+/// Add another branch pointing at the current HEAD.
+/// Don't switch to it.
+pub fn add_branch(repo: &git2::Repository, branch_name: &str) {
+    let head = repo.head().unwrap();
+    let head_commit = head.peel_to_commit().unwrap();
+    repo.branch(branch_name, &head_commit, false).unwrap();
+}

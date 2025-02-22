@@ -96,3 +96,11 @@ pub fn add_branch(repo: &git2::Repository, branch_name: &str) {
     let head_commit = head.peel_to_commit().unwrap();
     repo.branch(branch_name, &head_commit, false).unwrap();
 }
+
+/// Delete the branch with the given name.
+pub fn delete_branch(repo: &git2::Repository, branch_name: &str) {
+    let mut branch = repo
+        .find_branch(branch_name, git2::BranchType::Local)
+        .unwrap();
+    branch.delete().unwrap();
+}

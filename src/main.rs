@@ -89,16 +89,18 @@ fn main() {
         ));
     }
 
-    if let Err(e) = git_absorb::run(&git_absorb::Config {
-        dry_run,
-        force_author,
-        force,
-        base: base.as_deref(),
-        and_rebase,
-        whole_file,
-        one_fixup_per_commit,
-        logger: &logger,
-    }) {
+    if let Err(e) = git_absorb::run(
+        &logger,
+        &git_absorb::Config {
+            dry_run,
+            force_author,
+            force,
+            base: base.as_deref(),
+            and_rebase,
+            whole_file,
+            one_fixup_per_commit,
+        },
+    ) {
         crit!(logger, "absorb failed"; "err" => e.to_string());
         // wait for async logger to finish writing messages
         drop(logger);

@@ -12,6 +12,9 @@ use std::io::Write;
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force_author: bool,
+    pub force_detach: bool,
+    // force should only be used to enable oher force_* values when unifiying the config.
+    // Do not access when disabling individual safety checks.
     pub force: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
@@ -30,7 +33,13 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     let config = config::unify(&config, repo);
     // have force flag enable all force* flags
 
-    let stack = stack::working_stack(repo, config.base, config.force_author, config.force, logger)?;
+    let stack = stack::working_stack(
+        repo,
+        config.base,
+        config.force_author,
+        config.force_detach,
+        logger,
+    )?;
     if stack.is_empty() {
         crit!(logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -614,7 +623,7 @@ mod tests {
         let result = run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo);
         assert_eq!(
             result.err().unwrap().to_string(),
-            "HEAD is not a branch, use --force to override"
+            "HEAD is not a branch, use --force-detach to override"
         );
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -643,6 +652,27 @@ mod tests {
         assert_eq!(revwalk.count(), 1); // nothing was committed
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_with_force_detach_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force_detach: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
     #[test]
@@ -788,6 +818,7 @@ mod tests {
     const DEFAULT_CONFIG: Config = Config {
         dry_run: false,
         force_author: false,
+        force_detach: false,
         force: false,
         base: None,
         and_rebase: false,

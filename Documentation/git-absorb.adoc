@@ -53,14 +53,17 @@ FLAGS
 --force-author::
         Generate fixups to commits not made by you
 
+--force-detach::
+        Generate fixups even when on a non-branch (detached) HEAD
+
 -F::
 --one-fixup-per-commit::
         Only generate one fixup per commit
 
 -f::
 --force::
-        Skip all safety checks.
-        Generate fixups to commits not made by you (as if by --force-author) and to non-branch HEADs
+        Skip all safety checks as if all --force-* flags were givenj
+        See those flags to understand the full effect of supplying --force.
 
 -w::
 --whole-file::

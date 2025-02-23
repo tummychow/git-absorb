@@ -20,7 +20,10 @@ struct Cli {
     /// Generate fixups to commits not made by you
     #[clap(long)]
     force_author: bool,
-    /// Skip all safety checks; generate fixups to commits not made by you (as if by --force-author) and to non-branch HEADs
+    /// Generate fixups even when on a non-branch (detached) HEAD
+    #[clap(long)]
+    force_detach: bool,
+    /// Skip all safety checks as if all --force-* flags were given
     #[clap(long, short)]
     force: bool,
     /// Display more output
@@ -45,6 +48,7 @@ fn main() {
         base,
         dry_run,
         force_author,
+        force_detach,
         force,
         verbose,
         and_rebase,
@@ -94,6 +98,7 @@ fn main() {
         &git_absorb::Config {
             dry_run,
             force_author,
+            force_detach,
             force,
             base: base.as_deref(),
             and_rebase,

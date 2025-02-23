@@ -8,19 +8,21 @@ pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
     user_provided_base: Option<&str>,
     force_author: bool,
-    force: bool,
+    force_detach: bool,
     logger: &slog::Logger,
 ) -> Result<Vec<git2::Commit<'repo>>> {
     let head = repo.head()?;
     debug!(logger, "head found"; "head" => head.name());
 
     if !head.is_branch() {
-        if !force {
-            return Err(anyhow!("HEAD is not a branch, use --force to override"));
+        if !force_detach {
+            return Err(anyhow!(
+                "HEAD is not a branch, use --force-detach to override"
+            ));
         } else {
             warn!(
                 logger,
-                "HEAD is not a branch, but --force used to continue."
+                "HEAD is not a branch, but --force-detach used to continue."
             );
         }
     }

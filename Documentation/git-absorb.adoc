@@ -118,11 +118,11 @@ STACK SIZE
 ~~~~~~~~~~
 
 When run without `--base`, git-absorb will only search for candidate
-commits to fixup within a certain range (by default 10). If you get an
-error like this:
+commits to fixup within a certain range (by default 10), or until the
+first non-HEAD branch is reached. If you get an error like this:
 
 .............................................................................
-WARN stack limit reached, limit: 10
+WARN stack limit reached, use --base or configure absorb.maxStack to override
 .............................................................................
 
 edit your local or global `.gitconfig` and add the following section:

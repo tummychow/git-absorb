@@ -190,6 +190,18 @@ edit your local or global `.gitconfig` and add the following section:
     forceAuthor = true
 .............................................................................
 
+GENERATE FIXUPS ON DETACHED HEAD
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will not generate fixup commits when HEAD is not a
+branch ("is detached"). To always generate fixups on detached HEADs,
+edit your local or global `.gitconfig` and add the following section:
+
+.............................................................................
+[absorb]
+    forceDetach = true
+.............................................................................
+
 GITHUB PROJECT
 --------------
 

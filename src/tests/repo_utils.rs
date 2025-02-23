@@ -96,3 +96,8 @@ pub fn delete_branch(repo: &git2::Repository, branch_name: &str) {
         .unwrap();
     branch.delete().unwrap();
 }
+
+/// Set the named repository config flag to true.
+pub fn set_config_flag(repo: &git2::Repository, flag_name: &str) {
+    repo.config().unwrap().set_str(flag_name, "true").unwrap();
+}

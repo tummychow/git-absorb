@@ -12,22 +12,24 @@ use std::io::Write;
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force_author: bool,
+    pub force_detach: bool,
+    // force should only be used to enable oher force_* values when unifiying the config.
+    // Do not access when disabling individual safety checks.
     pub force: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
-    pub logger: &'a slog::Logger,
 }
 
-pub fn run(config: &Config) -> Result<()> {
+pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
     let repo = git2::Repository::open_from_env()?;
-    debug!(config.logger, "repository found"; "path" => repo.path().to_str());
+    debug!(logger, "repository found"; "path" => repo.path().to_str());
 
-    run_with_repo(&config, &repo)
+    run_with_repo(&logger, &config, &repo)
 }
 
-fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
+fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository) -> Result<()> {
     let config = config::unify(&config, repo);
     // have force flag enable all force* flags
 
@@ -35,11 +37,11 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         repo,
         config.base,
         config.force_author,
-        config.force,
-        config.logger,
+        config.force_detach,
+        logger,
     )?;
     if stack.is_empty() {
-        crit!(config.logger, "No commits available to fix up, exiting");
+        crit!(logger, "No commits available to fix up, exiting");
         return Ok(());
     }
 
@@ -81,7 +83,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
                     diff_options.as_mut(),
                 )?,
             )?;
-            trace!(config.logger, "parsed commit diff";
+            trace!(logger, "parsed commit diff";
                    "commit" => commit.id().to_string(),
                    "diff" => format!("{:?}", diff),
             );
@@ -98,7 +100,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         None,
         diff_options.as_mut(),
     )?)?;
-    trace!(config.logger, "parsed index";
+    trace!(logger, "parsed index";
            "index" => format!("{:?}", index),
     );
 
@@ -113,7 +115,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
     'patch: for index_patch in index.iter() {
         let old_path = index_patch.new_path.as_slice();
         if index_patch.status != git2::Delta::Modified {
-            debug!(config.logger, "skipped non-modified hunk";
+            debug!(logger, "skipped non-modified hunk";
                     "path" => String::from_utf8_lossy(old_path).into_owned(),
                     "status" => format!("{:?}", index_patch.status),
             );
@@ -125,7 +127,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
         let mut preceding_hunks_offset = 0isize;
         let mut applied_hunks_offset = 0isize;
         'hunk: for index_hunk in &index_patch.hunks {
-            debug!(config.logger, "next hunk";
+            debug!(logger, "next hunk";
                    "header" => index_hunk.header(),
                    "path" => String::from_utf8_lossy(old_path).into_owned(),
             );
@@ -170,7 +172,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
             // |   -5,1 +3,0    | -5,1 +4,0 |    -4,1 +3,0     |
             // |----------------|-----------|------------------|
 
-            debug!(config.logger, "";
+            debug!(logger, "";
                 "to apply" => hunk_to_apply.header(),
                 "to commute" => isolated_hunk.header(),
                 "preceding hunks" => format!("{}/{}", applied_hunks_offset, preceding_hunks_offset),
@@ -184,7 +186,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
             let mut commuted_index_hunk = isolated_hunk;
 
             'commit: for (commit, diff) in &stack {
-                let c_logger = config.logger.new(o!(
+                let c_logger = logger.new(o!(
                     "commit" => commit.id().to_string(),
                 ));
                 let next_patch = match diff.by_new(commuted_old_path) {
@@ -247,7 +249,7 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
                 // so there is no commit to absorb it into
                 None => {
                     warn!(
-                        config.logger,
+                        logger,
                         "Could not find a commit to fix up, use \
                          --base to increase the search range."
                     );
@@ -319,12 +321,12 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
                     &head_tree,
                     &[&head_commit],
                 )?)?;
-                info!(config.logger, "committed";
+                info!(logger, "committed";
                       "commit" => head_commit.id().to_string(),
                       "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
             } else {
-                info!(config.logger, "would have committed";
+                info!(logger, "would have committed";
                       "fixup" => dest_commit_locator,
                       "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
@@ -347,14 +349,14 @@ fn run_with_repo(config: &Config, repo: &git2::Repository) -> Result<()> {
     if patches_considered == 0 {
         if index_was_empty && !we_added_everything_to_index {
             warn!(
-                config.logger,
+                logger,
                 "No changes staged, try adding something \
                  to the index or set {} = true",
                 config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
             );
         } else {
             warn!(
-                config.logger,
+                logger,
                 "Could not find a commit to fix up, use \
                  --base to increase the search range."
             )
@@ -495,17 +497,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -522,16 +514,10 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
             one_fixup_per_commit: true,
-            logger: &logger,
+            ..DEFAULT_CONFIG
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -549,17 +535,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: true,
-            logger: &logger,
-        };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -578,20 +554,14 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
             force_author: true,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: true,
-            logger: &logger,
+            ..DEFAULT_CONFIG
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 2);
+        assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
@@ -606,20 +576,14 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
-            force_author: false,
             force: true,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: true,
-            logger: &logger,
+            ..DEFAULT_CONFIG
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 2);
+        assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
@@ -630,32 +594,138 @@ mod tests {
 
         repo_utils::become_new_author(&ctx);
 
-        ctx.repo
-            .config()
-            .unwrap()
-            .set_str("absorb.forceAuthor", "true")
-            .unwrap();
+        repo_utils::set_config_flag(&ctx.repo, "absorb.forceAuthor");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 3);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn detached_head() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let result = run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo);
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "HEAD is not a branch, use --force-detach to override"
+        );
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_pointing_at_branch_with_force_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx);
 
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: true,
-            logger: &logger,
+            force: true,
+            ..DEFAULT_CONFIG
         };
-        run_with_repo(&config, &ctx.repo).unwrap();
-
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 2);
 
+        assert_eq!(revwalk.count(), 1); // nothing was committed
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_with_force_detach_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force_detach: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn detached_head_with_force_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn detached_head_with_force_detach_config() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        repo_utils::set_config_flag(&ctx.repo, "absorb.forceDetach");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn attached_head_pointing_at_commit_on_a_second_branch() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::add_branch(&ctx.repo, "second-branch");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 1); // nothing was committed
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
     }
 
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
@@ -688,17 +758,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -725,17 +785,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -760,17 +810,7 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: false,
-            logger: &logger,
-        };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -792,28 +832,29 @@ mod tests {
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            dry_run: false,
-            force_author: false,
-            force: false,
-            base: None,
-            and_rebase: false,
-            whole_file: false,
-            one_fixup_per_commit: true,
-            logger: &logger,
-        };
-        run_with_repo(&config, &ctx.repo).unwrap();
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
 
         let oids: Vec<git2::Oid> = revwalk.by_ref().collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(oids.len(), 2);
+        assert_eq!(oids.len(), 3);
 
         let commit = ctx.repo.find_commit(oids[0]).unwrap();
         let actual_msg = commit.summary().unwrap();
-        let expected_msg = format!("fixup! {}", oids[1]);
+        let expected_msg = format!("fixup! {}", oids.last().unwrap());
         assert_eq!(actual_msg, expected_msg);
     }
+
+    const DEFAULT_CONFIG: Config = Config {
+        dry_run: false,
+        force_author: false,
+        force_detach: false,
+        force: false,
+        base: None,
+        and_rebase: false,
+        whole_file: false,
+        one_fixup_per_commit: false,
+    };
 }

@@ -521,7 +521,7 @@ mod tests {
     fn foreign_author() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -539,7 +539,7 @@ mod tests {
     fn foreign_author_with_force_author_flag() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -561,7 +561,7 @@ mod tests {
     fn foreign_author_with_force_flag() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -583,7 +583,7 @@ mod tests {
     fn foreign_author_with_force_author_config() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
         ctx.repo
             .config()

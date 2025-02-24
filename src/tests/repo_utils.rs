@@ -76,8 +76,8 @@ pub fn prepare_and_stage() -> Context {
     ctx
 }
 
-pub fn become_new_author(ctx: &Context) {
-    let mut config = ctx.repo.config().unwrap();
+pub fn become_new_author(repo: &git2::Repository) {
+    let mut config = repo.config().unwrap();
     config.set_str("user.name", "nobody2").unwrap();
     config.set_str("user.email", "nobody2@example.com").unwrap();
 }

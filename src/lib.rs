@@ -13,9 +13,6 @@ pub struct Config<'a> {
     pub dry_run: bool,
     pub force_author: bool,
     pub force_detach: bool,
-    // force should only be used to enable oher force_* values when unifiying the config.
-    // Do not access when disabling individual safety checks.
-    pub force: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
     pub whole_file: bool,
@@ -31,8 +28,6 @@ pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
 
 fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository) -> Result<()> {
     let config = config::unify(&config, repo);
-    // have force flag enable all force* flags
-
     let stack = stack::working_stack(
         repo,
         config.base,
@@ -567,28 +562,6 @@ mod tests {
     }
 
     #[test]
-    fn foreign_author_with_force_flag() {
-        let ctx = repo_utils::prepare_and_stage();
-
-        repo_utils::become_new_author(&ctx.repo);
-
-        // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            force: true,
-            ..DEFAULT_CONFIG
-        };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
-
-        let mut revwalk = ctx.repo.revwalk().unwrap();
-        revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 3);
-
-        assert!(nothing_left_in_index(&ctx.repo).unwrap());
-    }
-
-    #[test]
     fn foreign_author_with_force_author_config() {
         let ctx = repo_utils::prepare_and_stage();
 
@@ -630,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn detached_head_pointing_at_branch_with_force_flag() {
+    fn detached_head_pointing_at_branch_with_force_detach_flag() {
         let ctx = repo_utils::prepare_and_stage();
         repo_utils::detach_head(&ctx.repo);
 
@@ -638,7 +611,7 @@ mod tests {
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
-            force: true,
+            force_detach: true,
             ..DEFAULT_CONFIG
         };
         run_with_repo(&logger, &config, &ctx.repo).unwrap();
@@ -661,27 +634,6 @@ mod tests {
         let logger = slog::Logger::root(drain, o!());
         let config = Config {
             force_detach: true,
-            ..DEFAULT_CONFIG
-        };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
-        let mut revwalk = ctx.repo.revwalk().unwrap();
-        revwalk.push_head().unwrap();
-
-        assert_eq!(revwalk.count(), 3);
-        assert!(nothing_left_in_index(&ctx.repo).unwrap());
-    }
-
-    #[test]
-    fn detached_head_with_force_flag() {
-        let ctx = repo_utils::prepare_and_stage();
-        repo_utils::detach_head(&ctx.repo);
-        repo_utils::delete_branch(&ctx.repo, "master");
-
-        // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            force: true,
             ..DEFAULT_CONFIG
         };
         run_with_repo(&logger, &config, &ctx.repo).unwrap();
@@ -834,7 +786,6 @@ mod tests {
         dry_run: false,
         force_author: false,
         force_detach: false,
-        force: false,
         base: None,
         and_rebase: false,
         whole_file: false,

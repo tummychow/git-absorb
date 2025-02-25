@@ -97,9 +97,8 @@ fn main() {
         &logger,
         &git_absorb::Config {
             dry_run,
-            force_author,
-            force_detach,
-            force,
+            force_author: force_author || force,
+            force_detach: force_detach || force,
             base: base.as_deref(),
             and_rebase,
             whole_file,

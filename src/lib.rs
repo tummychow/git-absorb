@@ -663,6 +663,27 @@ mod tests {
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
+    #[test]
+    fn and_rebase_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            and_rebase: true,
+            ..DEFAULT_CONFIG
+        };
+        repo_utils::run_in_repo(&ctx, || run_with_repo(&logger, &config, &ctx.repo)).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 1);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);

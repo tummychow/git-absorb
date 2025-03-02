@@ -12,7 +12,7 @@ use std::io::Write;
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force_author: bool,
-    pub force: bool,
+    pub force_detach: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
     pub whole_file: bool,
@@ -28,9 +28,13 @@ pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
 
 fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository) -> Result<()> {
     let config = config::unify(&config, repo);
-    // have force flag enable all force* flags
-
-    let stack = stack::working_stack(repo, config.base, config.force_author, config.force, logger)?;
+    let stack = stack::working_stack(
+        repo,
+        config.base,
+        config.force_author,
+        config.force_detach,
+        logger,
+    )?;
     if stack.is_empty() {
         crit!(logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -521,7 +525,7 @@ mod tests {
     fn foreign_author() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -539,7 +543,7 @@ mod tests {
     fn foreign_author_with_force_author_flag() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -558,38 +562,12 @@ mod tests {
     }
 
     #[test]
-    fn foreign_author_with_force_flag() {
-        let ctx = repo_utils::prepare_and_stage();
-
-        repo_utils::become_new_author(&ctx);
-
-        // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        let config = Config {
-            force: true,
-            ..DEFAULT_CONFIG
-        };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
-
-        let mut revwalk = ctx.repo.revwalk().unwrap();
-        revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 3);
-
-        assert!(nothing_left_in_index(&ctx.repo).unwrap());
-    }
-
-    #[test]
     fn foreign_author_with_force_author_config() {
         let ctx = repo_utils::prepare_and_stage();
 
-        repo_utils::become_new_author(&ctx);
+        repo_utils::become_new_author(&ctx.repo);
 
-        ctx.repo
-            .config()
-            .unwrap()
-            .set_str("absorb.forceAuthor", "true")
-            .unwrap();
+        repo_utils::set_config_flag(&ctx.repo, "absorb.forceAuthor");
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -600,6 +578,88 @@ mod tests {
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 3);
 
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn detached_head() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let result = run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo);
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "HEAD is not a branch, use --force-detach to override"
+        );
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_pointing_at_branch_with_force_detach_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force_detach: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 1); // nothing was committed
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn detached_head_with_force_detach_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            force_detach: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn detached_head_with_force_detach_config() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::detach_head(&ctx.repo);
+        repo_utils::delete_branch(&ctx.repo, "master");
+
+        repo_utils::set_config_flag(&ctx.repo, "absorb.forceDetach");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(revwalk.count(), 3);
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
@@ -725,7 +785,7 @@ mod tests {
     const DEFAULT_CONFIG: Config = Config {
         dry_run: false,
         force_author: false,
-        force: false,
+        force_detach: false,
         base: None,
         and_rebase: false,
         whole_file: false,

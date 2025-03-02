@@ -53,14 +53,17 @@ FLAGS
 --force-author::
         Generate fixups to commits not made by you
 
+--force-detach::
+        Generate fixups even when on a non-branch (detached) HEAD
+
 -F::
 --one-fixup-per-commit::
         Only generate one fixup per commit
 
 -f::
 --force::
-        Skip all safety checks.
-        Generate fixups to commits not made by you (as if by --force-author) and to non-branch HEADs
+        Skip all safety checks as if all --force-* flags were givenj
+        See those flags to understand the full effect of supplying --force.
 
 -w::
 --whole-file::
@@ -185,6 +188,18 @@ edit your local or global `.gitconfig` and add the following section:
 .............................................................................
 [absorb]
     forceAuthor = true
+.............................................................................
+
+GENERATE FIXUPS ON DETACHED HEAD
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will not generate fixup commits when HEAD is not a
+branch ("is detached"). To always generate fixups on detached HEADs,
+edit your local or global `.gitconfig` and add the following section:
+
+.............................................................................
+[absorb]
+    forceDetach = true
 .............................................................................
 
 GITHUB PROJECT

@@ -7,6 +7,9 @@ pub const MAX_STACK: usize = 10;
 pub const FORCE_AUTHOR_CONFIG_NAME: &str = "absorb.forceAuthor";
 pub const FORCE_AUTHOR_DEFAULT: bool = false;
 
+pub const FORCE_DETACH_CONFIG_NAME: &str = "absorb.forceDetach";
+pub const FORCE_DETACH_DEFAULT: bool = false;
+
 pub const ONE_FIXUP_PER_COMMIT_CONFIG_NAME: &str = "absorb.oneFixupPerCommit";
 pub const ONE_FIXUP_PER_COMMIT_DEFAULT: bool = false;
 
@@ -34,8 +37,9 @@ pub fn unify<'config>(config: &'config Config, repo: &Repository) -> Config<'con
                 ONE_FIXUP_PER_COMMIT_DEFAULT,
             ),
         force_author: config.force_author
-            || config.force
             || bool_value(&repo, FORCE_AUTHOR_CONFIG_NAME, FORCE_AUTHOR_DEFAULT),
+        force_detach: config.force_detach
+            || bool_value(&repo, FORCE_DETACH_CONFIG_NAME, FORCE_DETACH_DEFAULT),
         ..*config
     }
 }

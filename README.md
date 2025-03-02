@@ -102,7 +102,6 @@ or the git-absorb manual page.
 ## TODO
 
 - implement remote default branch check
-- add smaller force flags to disable individual safety checks
 - stop using `failure::err_msg` and ensure all error output is actionable by the user
 - slightly more log output in the success case
 - more tests (esp main module and integration tests)

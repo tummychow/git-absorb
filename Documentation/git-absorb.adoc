@@ -44,7 +44,8 @@ FLAGS
 
 -r::
 --and-rebase::
-        Run rebase if successful
+        Run rebase if successful.
+        See also the REBASE_OPTIONS below.
 
 -n::
 --dry-run::
@@ -92,6 +93,11 @@ OPTIONS
 --gen-completions <SHELL>::
         Generate completions
         [possible values: bash, fish, nushell, zsh, powershell, elvish]
+
+-- <REBASE_OPTIONS>::
+        Options to pass to git rebase after generating commits.
+        Must be the last arguments and the `--` must be present.
+        Only valid when `--and-rebase` is used.
 
 USAGE
 -----

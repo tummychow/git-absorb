@@ -32,6 +32,9 @@ struct Cli {
     /// Run rebase if successful
     #[clap(long, short = 'r')]
     and_rebase: bool,
+    /// Extra arguments to pass to git rebase. Only valid if --and-rebase is set
+    #[clap(last = true)]
+    rebase_options: Vec<String>,
     /// Generate completions
     #[clap(long, value_name = "SHELL", value_parser = ["bash", "fish", "nushell", "zsh", "powershell", "elvish"])]
     gen_completions: Option<String>,
@@ -52,6 +55,7 @@ fn main() {
         force,
         verbose,
         and_rebase,
+        rebase_options,
         gen_completions,
         whole_file,
         one_fixup_per_commit,
@@ -93,6 +97,7 @@ fn main() {
         ));
     }
 
+    let rebase_options: Vec<&str> = rebase_options.iter().map(AsRef::as_ref).collect();
     if let Err(e) = git_absorb::run(
         &logger,
         &git_absorb::Config {
@@ -101,6 +106,7 @@ fn main() {
             force_detach: force_detach || force,
             base: base.as_deref(),
             and_rebase,
+            rebase_options: &rebase_options,
             whole_file,
             one_fixup_per_commit,
         },

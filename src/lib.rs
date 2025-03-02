@@ -15,6 +15,7 @@ pub struct Config<'a> {
     pub force_detach: bool,
     pub base: Option<&'a str>,
     pub and_rebase: bool,
+    pub rebase_options: &'a Vec<&'a str>,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
 }
@@ -27,6 +28,12 @@ pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
 }
 
 fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository) -> Result<()> {
+    if !config.rebase_options.is_empty() && !config.and_rebase {
+        return Err(anyhow!(
+            "REBASE_OPTIONS were specified without --and-rebase flag"
+        ));
+    }
+
     let config = config::unify(&config, repo);
     let stack = stack::working_stack(
         repo,
@@ -367,6 +374,10 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         let mut command = Command::new("git");
         command.args(["rebase", "--interactive", "--autosquash", "--autostash"]);
 
+        for arg in config.rebase_options {
+            command.arg(arg);
+        }
+
         if number_of_parents == 0 {
             command.arg("--root");
         } else {
@@ -480,6 +491,7 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
 
 #[cfg(test)]
 mod tests {
+    use git2::message_trailers_strs;
     use std::path::PathBuf;
 
     use super::*;
@@ -684,6 +696,71 @@ mod tests {
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
+    #[test]
+    fn and_rebase_flag_with_rebase_options() {
+        let ctx = repo_utils::prepare_and_stage();
+        repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            and_rebase: true,
+            rebase_options: &vec!["--signoff"],
+            ..DEFAULT_CONFIG
+        };
+        repo_utils::run_in_repo(&ctx, || run_with_repo(&logger, &config, &ctx.repo)).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+
+        let trailers = message_trailers_strs(
+            ctx.repo
+                .head()
+                .unwrap()
+                .peel_to_commit()
+                .unwrap()
+                .message()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            trailers
+                .iter()
+                .filter(|trailer| trailer.0 == "Signed-off-by")
+                .count(),
+            1
+        );
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn rebase_options_without_and_rebase_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            rebase_options: &vec!["--some-option"],
+            ..DEFAULT_CONFIG
+        };
+        let result = run_with_repo(&logger, &config, &ctx.repo);
+
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "REBASE_OPTIONS were specified without --and-rebase flag"
+        );
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);
@@ -809,6 +886,7 @@ mod tests {
         force_detach: false,
         base: None,
         and_rebase: false,
+        rebase_options: &Vec::new(),
         whole_file: false,
         one_fixup_per_commit: false,
     };

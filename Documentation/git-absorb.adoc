@@ -62,7 +62,7 @@ FLAGS
 
 -f::
 --force::
-        Skip all safety checks as if all --force-* flags were givenj
+        Skip all safety checks as if all --force-* flags were given.
         See those flags to understand the full effect of supplying --force.
 
 -w::

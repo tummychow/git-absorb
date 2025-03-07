@@ -1,4 +1,6 @@
 #[cfg(test)]
+use anyhow::Result;
+use current_dir::Cwd;
 use std::path::{Path, PathBuf};
 pub struct Context {
     pub repo: git2::Repository,
@@ -15,6 +17,7 @@ impl Context {
 pub fn prepare_repo() -> (Context, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
+    become_author(&repo, "nobody", "nobody@example.com");
 
     let path = PathBuf::from("test-file.txt");
     std::fs::write(
@@ -32,10 +35,7 @@ lines
     // make the borrow-checker happy by introducing a new scope
     {
         let tree = add(&repo, &path);
-        let signature = repo
-            .signature()
-            .or_else(|_| git2::Signature::now("nobody", "nobody@example.com"))
-            .unwrap();
+        let signature = repo.signature().unwrap();
         repo.commit(
             Some("HEAD"),
             &signature,
@@ -76,10 +76,29 @@ pub fn prepare_and_stage() -> Context {
     ctx
 }
 
-pub fn become_new_author(repo: &git2::Repository) {
+/// Set the named repository config option to value.
+pub fn set_config_option(repo: &git2::Repository, name: &str, value: &str) {
+    repo.config().unwrap().set_str(name, value).unwrap();
+}
+
+/// Run a function while in the working directory of the repository.
+///
+/// Can be used to ensure that at most one test changes the working
+/// directory at a time, preventing clashes.
+pub fn run_in_repo<F>(ctx: &Context, f: F) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let mut locked_cwd = Cwd::mutex().lock().unwrap();
+    locked_cwd.set(ctx.dir.path()).unwrap();
+    f()
+}
+
+/// Become a new author - set the user.name and user.email config options.
+pub fn become_author(repo: &git2::Repository, name: &str, email: &str) {
     let mut config = repo.config().unwrap();
-    config.set_str("user.name", "nobody2").unwrap();
-    config.set_str("user.email", "nobody2@example.com").unwrap();
+    config.set_str("user.name", name).unwrap();
+    config.set_str("user.email", email).unwrap();
 }
 
 /// Detach HEAD from the current branch.

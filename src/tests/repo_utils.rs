@@ -1,6 +1,4 @@
 #[cfg(test)]
-use anyhow::Result;
-use current_dir::Cwd;
 use std::path::{Path, PathBuf};
 pub struct Context {
     pub repo: git2::Repository,
@@ -79,19 +77,6 @@ pub fn prepare_and_stage() -> Context {
 /// Set the named repository config option to value.
 pub fn set_config_option(repo: &git2::Repository, name: &str, value: &str) {
     repo.config().unwrap().set_str(name, value).unwrap();
-}
-
-/// Run a function while in the working directory of the repository.
-///
-/// Can be used to ensure that at most one test changes the working
-/// directory at a time, preventing clashes.
-pub fn run_in_repo<F>(ctx: &Context, f: F) -> Result<()>
-where
-    F: FnOnce() -> Result<()>,
-{
-    let mut locked_cwd = Cwd::mutex().lock().unwrap();
-    locked_cwd.set(ctx.dir.path()).unwrap();
-    f()
 }
 
 /// Become a new author - set the user.name and user.email config options.

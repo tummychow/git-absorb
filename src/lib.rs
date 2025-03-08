@@ -8,6 +8,7 @@ mod owned;
 mod stack;
 
 use std::io::Write;
+use std::path::Path;
 
 pub struct Config<'a> {
     pub dry_run: bool,
@@ -372,6 +373,25 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         assert!(number_of_parents <= 1);
 
         let mut command = Command::new("git");
+
+        // We'd generally expect to be run from within the repository, but just in case,
+        // try to have git run rebase from the repository root.
+        // This simplifies writing tests that execute from within git-absorb's source directory
+        // but operate on temporary repositories created elsewhere.
+        // (The tests could explicitly change directories, but then must be serialized.)
+        let repo_path = repo.path().parent().map(Path::to_str).flatten();
+        match repo_path {
+            Some(path) => {
+                command.args(["-C", path]);
+            }
+            _ => {
+                warn!(
+                    logger,
+                    "Could not determine repository path for rebase. Running in current directory."
+                );
+            }
+        }
+
         command.args(["rebase", "--interactive", "--autosquash", "--autostash"]);
 
         for arg in config.rebase_options {
@@ -687,7 +707,7 @@ mod tests {
             and_rebase: true,
             ..DEFAULT_CONFIG
         };
-        repo_utils::run_in_repo(&ctx, || run_with_repo(&logger, &config, &ctx.repo)).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -709,7 +729,7 @@ mod tests {
             rebase_options: &vec!["--signoff"],
             ..DEFAULT_CONFIG
         };
-        repo_utils::run_in_repo(&ctx, || run_with_repo(&logger, &config, &ctx.repo)).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();

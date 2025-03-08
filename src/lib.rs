@@ -407,9 +407,14 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             command.arg(&base_commit_sha);
         }
 
-        // Don't check that we have successfully absorbed everything, nor git's
-        // exit code -- as git will print helpful messages on its own.
-        command.status().expect("could not run git rebase");
+        if config.dry_run {
+            info!(logger, "would have run git rebase"; "command" => format!("{:?}", command));
+        } else {
+            debug!(logger, "running git rebase"; "command" => format!("{:?}", command));
+            // Don't check that we have successfully absorbed everything, nor git's
+            // exit code -- as git will print helpful messages on its own.
+            command.status().expect("could not run git rebase");
+        }
     }
 
     Ok(())
@@ -836,7 +841,7 @@ mod tests {
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
-        assert_eq!(revwalk.count(), 1); // git rebase melded the original and fixup
+        assert_eq!(revwalk.count(), 2); // git rebase wasn't called so both commits persist
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
     }

@@ -273,7 +273,6 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
 
     let target_always_sha: bool = config::fixup_target_always_sha(repo);
 
-    hunks_with_commit.sort_by_key(|h| h.dest_commit.id());
     // * apply all hunks that are going to be fixed up into `dest_commit`
     // * commit the fixup
     // * repeat for all `dest_commit`s

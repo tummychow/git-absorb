@@ -1,4 +1,5 @@
 #[cfg(test)]
+use git2::Tree;
 use std::path::{Path, PathBuf};
 pub struct Context {
     pub repo: git2::Repository,
@@ -61,7 +62,12 @@ pub fn add<'r>(repo: &'r git2::Repository, path: &Path) -> git2::Tree<'r> {
 /// Prepare an empty repo, and stage some changes.
 pub fn prepare_and_stage() -> Context {
     let (ctx, file_path) = prepare_repo();
+    stage_file_changes(&ctx, &file_path);
+    ctx
+}
 
+/// Modify a file in the repository and stage the changes.
+pub fn stage_file_changes<'r>(ctx: &'r Context, file_path: &PathBuf) -> Tree<'r> {
     // add some lines to our file
     let path = ctx.join(&file_path);
     let contents = std::fs::read_to_string(&path).unwrap();
@@ -69,9 +75,7 @@ pub fn prepare_and_stage() -> Context {
     std::fs::write(&path, &modifications).unwrap();
 
     // stage it
-    add(&ctx.repo, &file_path);
-
-    ctx
+    add(&ctx.repo, &file_path)
 }
 
 /// Set the named repository config option to value.

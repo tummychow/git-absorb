@@ -781,6 +781,66 @@ mod tests {
         assert!(is_something_in_index);
     }
 
+    #[test]
+    fn dry_run_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn dry_run_flag_with_and_rebase_flag() {
+        let (ctx, path) = repo_utils::prepare_repo();
+        repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+
+        // create a fixup commit that 'git rebase' will act on if called
+        let tree = repo_utils::stage_file_changes(&ctx, &path);
+        let signature = ctx.repo.signature().unwrap();
+        let head_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+        ctx.repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                &format!("fixup! {}\n", head_commit.id()),
+                &tree,
+                &[&head_commit],
+            )
+            .unwrap();
+
+        // stage one more change so 'git-absorb' won't exit early
+        repo_utils::stage_file_changes(&ctx, &path);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            and_rebase: true,
+            dry_run: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1); // git rebase melded the original and fixup
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
         let path = ctx.join(&file_path);

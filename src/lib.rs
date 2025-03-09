@@ -8,6 +8,7 @@ mod owned;
 mod stack;
 
 use std::io::Write;
+use std::path::Path;
 
 pub struct Config<'a> {
     pub dry_run: bool,
@@ -372,6 +373,25 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         assert!(number_of_parents <= 1);
 
         let mut command = Command::new("git");
+
+        // We'd generally expect to be run from within the repository, but just in case,
+        // try to have git run rebase from the repository root.
+        // This simplifies writing tests that execute from within git-absorb's source directory
+        // but operate on temporary repositories created elsewhere.
+        // (The tests could explicitly change directories, but then must be serialized.)
+        let repo_path = repo.path().parent().map(Path::to_str).flatten();
+        match repo_path {
+            Some(path) => {
+                command.args(["-C", path]);
+            }
+            _ => {
+                warn!(
+                    logger,
+                    "Could not determine repository path for rebase. Running in current directory."
+                );
+            }
+        }
+
         command.args(["rebase", "--interactive", "--autosquash", "--autostash"]);
 
         for arg in config.rebase_options {
@@ -387,9 +407,14 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             command.arg(&base_commit_sha);
         }
 
-        // Don't check that we have successfully absorbed everything, nor git's
-        // exit code -- as git will print helpful messages on its own.
-        command.status().expect("could not run git rebase");
+        if config.dry_run {
+            info!(logger, "would have run git rebase"; "command" => format!("{:?}", command));
+        } else {
+            debug!(logger, "running git rebase"; "command" => format!("{:?}", command));
+            // Don't check that we have successfully absorbed everything, nor git's
+            // exit code -- as git will print helpful messages on its own.
+            command.status().expect("could not run git rebase");
+        }
     }
 
     Ok(())
@@ -687,7 +712,7 @@ mod tests {
             and_rebase: true,
             ..DEFAULT_CONFIG
         };
-        repo_utils::run_in_repo(&ctx, || run_with_repo(&logger, &config, &ctx.repo)).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -709,7 +734,7 @@ mod tests {
             rebase_options: &vec!["--signoff"],
             ..DEFAULT_CONFIG
         };
-        repo_utils::run_in_repo(&ctx, || run_with_repo(&logger, &config, &ctx.repo)).unwrap();
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -757,6 +782,66 @@ mod tests {
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn dry_run_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            dry_run: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 1);
+        let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
+        assert!(is_something_in_index);
+    }
+
+    #[test]
+    fn dry_run_flag_with_and_rebase_flag() {
+        let (ctx, path) = repo_utils::prepare_repo();
+        repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+
+        // create a fixup commit that 'git rebase' will act on if called
+        let tree = repo_utils::stage_file_changes(&ctx, &path);
+        let signature = ctx.repo.signature().unwrap();
+        let head_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+        ctx.repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                &format!("fixup! {}\n", head_commit.id()),
+                &tree,
+                &[&head_commit],
+            )
+            .unwrap();
+
+        // stage one more change so 'git-absorb' won't exit early
+        repo_utils::stage_file_changes(&ctx, &path);
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            and_rebase: true,
+            dry_run: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2); // git rebase wasn't called so both commits persist
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
     }

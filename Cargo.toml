@@ -35,5 +35,4 @@ memchr = "2.3"
 anyhow = "1.0"
 
 [dev-dependencies]
-current_dir = "0.1.0"
 tempfile = "3.1"

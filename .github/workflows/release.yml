@@ -51,6 +51,7 @@ jobs:
         with:
           name: ${{ env.GA_VERSION }}
           tag_name: ${{ env.GA_VERSION }}
+          generate_release_notes: true
 
   build-man-page:
     name: build-man-page

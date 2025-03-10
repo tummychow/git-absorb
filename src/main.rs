@@ -44,6 +44,9 @@ struct Cli {
     /// Only generate one fixup per commit
     #[clap(long, short = 'F')]
     one_fixup_per_commit: bool,
+    /// Only generate one reflog entry, no matter how many commits were made
+    #[clap(long, short = 'F')]
+    one_reflog_entry: bool,
 }
 
 fn main() {
@@ -59,6 +62,7 @@ fn main() {
         gen_completions,
         whole_file,
         one_fixup_per_commit,
+        one_reflog_entry,
     } = Cli::parse();
 
     if let Some(shell) = gen_completions {
@@ -109,6 +113,7 @@ fn main() {
             rebase_options: &rebase_options,
             whole_file,
             one_fixup_per_commit,
+            one_reflog_entry,
         },
     ) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

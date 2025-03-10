@@ -7,6 +7,7 @@ mod config;
 mod owned;
 mod stack;
 
+use git2::ResetType;
 use std::io::Write;
 use std::path::Path;
 
@@ -19,6 +20,7 @@ pub struct Config<'a> {
     pub rebase_options: &'a Vec<&'a str>,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
+    pub one_reflog_entry: bool,
 }
 
 pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
@@ -316,7 +318,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             if !config.dry_run {
                 head_tree = new_head_tree;
                 head_commit = repo.find_commit(repo.commit(
-                    Some("HEAD"),
+                    (!config.one_reflog_entry).then_some("HEAD"),
                     &signature,
                     &signature,
                     &format!("fixup! {}\n", dest_commit_locator),
@@ -337,6 +339,14 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             // we didn't commit anything, but we applied a hunk
             head_tree = new_head_tree;
         }
+    }
+
+    if config.one_reflog_entry && !config.dry_run {
+        let mut head_ref = repo.head()?;
+        head_ref.set_target(head_commit.id(), "absorb: adding fixup commits")?;
+        // If you don't like the fancy custom reflog message above and want to stick to Git's own
+        // messages, this would also work:
+        // repo.reset(head_commit.as_object(), ResetType::Soft, None)?;
     }
 
     if autostage_enabled && we_added_everything_to_index {
@@ -555,6 +565,39 @@ mod tests {
         assert_eq!(revwalk.count(), 2);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn one_reflog_entry() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // get initial reflog length to compare
+        let initial_reflog_len = ctx.repo.reflog("HEAD").unwrap().len();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let config = Config {
+            one_reflog_entry: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+
+        // sanity checks: all is as usual when it comes to commits and index:
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 3);
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        // check that only one reflog entry was created:
+        let reflog = ctx.repo.reflog("HEAD").unwrap();
+        let final_reflog_len = reflog.len();
+        assert_eq!(final_reflog_len, initial_reflog_len + 1);
+
+        // check reflog entry message:
+        let reflog_entry = reflog.get(0).unwrap();
+        let reflog_message = reflog_entry.message().unwrap();
+        assert_eq!(reflog_message, "absorb: adding fixup commits");
     }
 
     #[test]
@@ -973,5 +1016,6 @@ mod tests {
         rebase_options: &Vec::new(),
         whole_file: false,
         one_fixup_per_commit: false,
+        one_reflog_entry: false,
     };
 }

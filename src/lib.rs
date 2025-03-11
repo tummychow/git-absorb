@@ -280,9 +280,6 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         None
     };
     if branch_name != None && !config.dry_run {
-        // To detach head with libgit2 default reflog message:
-        // repo.set_head_detached(head_commit.id())?;
-        // But since we want a fancy custom one:
         repo.reference(
             "HEAD",
             head_commit.id(),
@@ -445,9 +442,6 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 final_commit.id(),
                 "absorb (finish): updating branch ref to final result",
             )?;
-            // To reattach head with libgit2 default reflog message:
-            // repo.set_head(&branch_name)?;
-            // But since we want a fancy custom one:
             repo.reference_symbolic(
                 "HEAD",
                 &branch_name,

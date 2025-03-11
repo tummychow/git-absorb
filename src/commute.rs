@@ -96,12 +96,10 @@ mod tests {
             added: owned::Block {
                 start: 2,
                 lines: Rc::new(vec![b"bar\n".to_vec()]),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 1,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
         };
         // after hunk1: <<EOF
@@ -112,12 +110,10 @@ mod tests {
             added: owned::Block {
                 start: 1,
                 lines: Rc::new(vec![b"bar\n".to_vec()]),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 0,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
         };
         // after hunk2: <<EOF
@@ -138,24 +134,20 @@ mod tests {
             added: owned::Block {
                 start: 1,
                 lines: Rc::new((&mut line).take(4).collect::<Vec<_>>()),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 0,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
         };
         let hunk2 = owned::Hunk {
             added: owned::Block {
                 start: 1,
                 lines: Rc::new((&mut line).take(2).collect::<Vec<_>>()),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 0,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
         };
 
@@ -171,24 +163,20 @@ mod tests {
             added: owned::Block {
                 start: 1,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 4,
                 lines: Rc::new((&mut line).take(4).collect::<Vec<_>>()),
-                trailing_newline: true,
             },
         };
         let hunk2 = owned::Hunk {
             added: owned::Block {
                 start: 1,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 2,
                 lines: Rc::new((&mut line).take(2).collect::<Vec<_>>()),
-                trailing_newline: true,
             },
         };
 
@@ -208,24 +196,20 @@ mod tests {
                 added: owned::Block {
                     start: 1,
                     lines: Rc::new(vec![b"bar\n".to_vec()]),
-                    trailing_newline: true,
                 },
                 removed: owned::Block {
                     start: 0,
                     lines: Rc::new(vec![]),
-                    trailing_newline: true,
                 },
             },
             owned::Hunk {
                 added: owned::Block {
                     start: 3,
                     lines: Rc::new(vec![b"bar\n".to_vec()]),
-                    trailing_newline: true,
                 },
                 removed: owned::Block {
                     start: 1,
                     lines: Rc::new(vec![]),
-                    trailing_newline: true,
                 },
             },
         ];
@@ -239,12 +223,10 @@ mod tests {
             added: owned::Block {
                 start: 5,
                 lines: Rc::new(vec![b"bar\n".to_vec()]),
-                trailing_newline: true,
             },
             removed: owned::Block {
                 start: 4,
                 lines: Rc::new(vec![]),
-                trailing_newline: true,
             },
         };
         // after hunk: <<EOF

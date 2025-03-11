@@ -51,7 +51,6 @@ impl Diff {
 pub struct Block {
     pub start: usize,
     pub lines: Rc<Vec<Vec<u8>>>,
-    pub trailing_newline: bool,
 }
 #[derive(Debug, Clone)]
 pub struct Hunk {
@@ -133,12 +132,10 @@ impl Hunk {
             added: Block {
                 start: added_start,
                 lines: Rc::new(added_lines),
-                trailing_newline: added_trailing_newline,
             },
             removed: Block {
                 start: removed_start,
                 lines: Rc::new(removed_lines),
-                trailing_newline: removed_trailing_newline,
             },
         })
     }
@@ -206,9 +203,7 @@ impl Hunk {
 #[derive(Debug)]
 pub struct Patch {
     pub old_path: Vec<u8>,
-    pub old_id: git2::Oid,
     pub new_path: Vec<u8>,
-    pub new_id: git2::Oid,
     pub status: git2::Delta,
     pub hunks: Vec<Hunk>,
 }
@@ -221,14 +216,12 @@ impl Patch {
                 .path_bytes()
                 .map(Vec::from)
                 .ok_or_else(|| anyhow!("delta with empty old path"))?,
-            old_id: patch.delta().old_file().id(),
             new_path: patch
                 .delta()
                 .new_file()
                 .path_bytes()
                 .map(Vec::from)
                 .ok_or_else(|| anyhow!("delta with empty new path"))?,
-            new_id: patch.delta().new_file().id(),
             status: patch.delta().status(),
             hunks: Vec::with_capacity(patch.num_hunks()),
         };

@@ -271,6 +271,26 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         }
     }
 
+    // To avoid creating entries in our starting branch's reflog when we create commits,
+    // we detach HEAD if it isn't already:
+    let mut initial_head_ref = repo.head()?;
+    let branch_name = if initial_head_ref.is_branch() {
+        initial_head_ref.name()
+    } else {
+        None
+    };
+    if branch_name != None && !config.dry_run {
+        // To detach head with libgit2 default reflog message:
+        // repo.set_head_detached(head_commit.id())?;
+        // But since we want a fancy custom one:
+        repo.reference(
+            "HEAD",
+            head_commit.id(),
+            true,
+            "absorb (start): detaching HEAD",
+        )?;
+    }
+
     let target_always_sha: bool = config::fixup_target_always_sha(repo);
 
     // * apply all hunks that are going to be fixed up into `dest_commit`
@@ -413,6 +433,27 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             // Don't check that we have successfully absorbed everything, nor git's
             // exit code -- as git will print helpful messages on its own.
             command.status().expect("could not run git rebase");
+        }
+    }
+
+    // If we started out on a branch, update it to point to the result and re-attach HEAD:
+    if let Some(branch_name) = branch_name {
+        let final_commit = repo.head()?.peel_to_commit()?;
+        let branch_name = branch_name.to_string(); // TODO Probably a better way?
+        if !config.dry_run {
+            initial_head_ref.set_target(
+                final_commit.id(),
+                "absorb (finish): updating branch ref to final result",
+            )?;
+            // To reattach head with libgit2 default reflog message:
+            // repo.set_head(&branch_name)?;
+            // But since we want a fancy custom one:
+            repo.reference_symbolic(
+                "HEAD",
+                &branch_name,
+                true,
+                &format!("absorb (finish): returning to {branch_name}"),
+            )?;
         }
     }
 

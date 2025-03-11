@@ -560,6 +560,9 @@ mod tests {
     fn multiple_fixups_per_commit() {
         let ctx = repo_utils::prepare_and_stage();
 
+        let initial_head_reflog = ctx.repo.reflog("HEAD").unwrap();
+        let initial_branch_reflog = ctx.repo.reflog("refs/heads/master").unwrap();
+
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
@@ -570,6 +573,27 @@ mod tests {
         assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let head_reflog = ctx.repo.reflog("HEAD").unwrap();
+        let branch_reflog = ctx.repo.reflog("refs/heads/master").unwrap();
+
+        // check reflog length
+        assert_eq!(head_reflog.len(), initial_head_reflog.len() + 4);
+        assert_eq!(branch_reflog.len(), initial_branch_reflog.len() + 1);
+
+        // check reflog messages
+        assert_eq!(
+            head_reflog.get(0).unwrap().message().unwrap(),
+            "absorb (finish): returning to refs/heads/master"
+        );
+        assert_eq!(
+            head_reflog.get(3).unwrap().message().unwrap(),
+            "absorb (start): detaching HEAD"
+        );
+        assert_eq!(
+            branch_reflog.get(0).unwrap().message().unwrap(),
+            "absorb (finish): updating branch ref to final result"
+        );
     }
 
     #[test]

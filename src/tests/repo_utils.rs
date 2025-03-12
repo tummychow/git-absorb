@@ -15,7 +15,11 @@ impl Context {
 /// Prepare a fresh git repository with an initial commit and a file.
 pub fn prepare_repo() -> (Context, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let repo = git2::Repository::init_opts(
+        dir.path(),
+        git2::RepositoryInitOptions::new().initial_head("master"),
+    )
+    .unwrap();
     become_author(&repo, "nobody", "nobody@example.com");
 
     let path = PathBuf::from("test-file.txt");

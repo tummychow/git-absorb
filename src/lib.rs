@@ -703,6 +703,7 @@ mod tests {
     fn and_rebase_flag() {
         let ctx = repo_utils::prepare_and_stage();
         repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+        repo_utils::set_config_option(&ctx.repo, "advice.waitingForEditor", "false");
 
         // run 'git-absorb'
         let drain = slog::Discard;
@@ -724,6 +725,7 @@ mod tests {
     fn and_rebase_flag_with_rebase_options() {
         let ctx = repo_utils::prepare_and_stage();
         repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+        repo_utils::set_config_option(&ctx.repo, "advice.waitingForEditor", "false");
 
         // run 'git-absorb'
         let drain = slog::Discard;

@@ -529,6 +529,8 @@ mod tests {
     fn multiple_fixups_per_commit() {
         let ctx = repo_utils::prepare_and_stage();
 
+        let actual_pre_absorb_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap().id();
+
         // run 'git-absorb'
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, o!());
@@ -539,6 +541,9 @@ mod tests {
         assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
+        assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
     }
 
     #[test]
@@ -807,6 +812,9 @@ mod tests {
         assert_eq!(revwalk.count(), 1);
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
+
+        let pre_absorb_ref_commit = ctx.repo.references_glob("PRE_ABSORB_HEAD").unwrap().last();
+        assert!(matches!(pre_absorb_ref_commit, None));
     }
 
     #[test]

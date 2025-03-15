@@ -527,9 +527,11 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
 #[cfg(test)]
 mod tests {
     use git2::message_trailers_strs;
+    use serde_json::json;
     use std::path::PathBuf;
 
     use super::*;
+    mod log_utils;
     mod repo_utils;
 
     #[test]
@@ -539,9 +541,8 @@ mod tests {
         let actual_pre_absorb_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap().id();
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -551,6 +552,14 @@ mod tests {
 
         let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
         assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -558,19 +567,23 @@ mod tests {
         let ctx = repo_utils::prepare_and_stage();
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             one_fixup_per_commit: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 2);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({"level": "INFO", "msg": "committed"})],
+        );
     }
 
     #[test]
@@ -580,15 +593,26 @@ mod tests {
         repo_utils::become_author(&ctx.repo, "nobody2", "nobody2@example.com");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "Will not fix up past commits not authored by you, \
+                           use --force-author to override"
+                }),
+                &json!({"level": "CRIT", "msg": "No commits available to fix up, exiting"}),
+            ],
+        );
     }
 
     #[test]
@@ -598,19 +622,26 @@ mod tests {
         repo_utils::become_author(&ctx.repo, "nobody2", "nobody2@example.com");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             force_author: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -622,15 +653,22 @@ mod tests {
         repo_utils::set_config_flag(&ctx.repo, "absorb.forceAuthor");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 3);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -639,9 +677,8 @@ mod tests {
         repo_utils::detach_head(&ctx.repo);
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        let result = run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo);
+        let capturing_logger = log_utils::CapturingLogger::new();
+        let result = run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo);
         assert_eq!(
             result.err().unwrap().to_string(),
             "HEAD is not a branch, use --force-detach to override"
@@ -660,19 +697,30 @@ mod tests {
         repo_utils::detach_head(&ctx.repo);
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             force_detach: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
 
         assert_eq!(revwalk.count(), 1); // nothing was committed
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "HEAD is not a branch, but --force-detach used to continue.",
+                }),
+                &json!({"level": "WARN", "msg": "Please use --base to specify a base commit."}),
+                &json!({"level": "CRIT", "msg": "No commits available to fix up, exiting"}),
+            ],
+        );
     }
 
     #[test]
@@ -682,18 +730,29 @@ mod tests {
         repo_utils::delete_branch(&ctx.repo, "master");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             force_detach: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
 
         assert_eq!(revwalk.count(), 3);
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "HEAD is not a branch, but --force-detach used to continue.",
+                }),
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -705,14 +764,25 @@ mod tests {
         repo_utils::set_config_flag(&ctx.repo, "absorb.forceDetach");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
 
         assert_eq!(revwalk.count(), 3);
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "HEAD is not a branch, but --force-detach used to continue.",
+                }),
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -722,19 +792,26 @@ mod tests {
         repo_utils::set_config_option(&ctx.repo, "advice.waitingForEditor", "false");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             and_rebase: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
 
         assert_eq!(revwalk.count(), 1);
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -744,14 +821,13 @@ mod tests {
         repo_utils::set_config_option(&ctx.repo, "advice.waitingForEditor", "false");
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             and_rebase: true,
             rebase_options: &vec!["--signoff"],
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -776,6 +852,14 @@ mod tests {
         );
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]
@@ -783,13 +867,12 @@ mod tests {
         let ctx = repo_utils::prepare_and_stage();
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             rebase_options: &vec!["--some-option"],
             ..DEFAULT_CONFIG
         };
-        let result = run_with_repo(&logger, &config, &ctx.repo);
+        let result = run_with_repo(&capturing_logger.logger, &config, &ctx.repo);
 
         assert_eq!(
             result.err().unwrap().to_string(),
@@ -808,13 +891,12 @@ mod tests {
         let ctx = repo_utils::prepare_and_stage();
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             dry_run: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
@@ -824,6 +906,20 @@ mod tests {
 
         let pre_absorb_ref_commit = ctx.repo.references_glob("PRE_ABSORB_HEAD").unwrap().last();
         assert!(pre_absorb_ref_commit.is_none());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "would have committed", "fixup": "Initial commit.",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "would have committed", "fixup": "Initial commit.",
+                }),
+            ],
+        );
     }
 
     #[test]
@@ -850,20 +946,28 @@ mod tests {
         repo_utils::stage_file_changes(&ctx, &path);
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
+        let mut capturing_logger = log_utils::CapturingLogger::new();
         let config = Config {
             and_rebase: true,
             dry_run: true,
             ..DEFAULT_CONFIG
         };
-        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 2); // git rebase wasn't called so both commits persist
         let is_something_in_index = !nothing_left_in_index(&ctx.repo).unwrap();
         assert!(is_something_in_index);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "would have committed",}),
+                &json!({"level": "INFO", "msg": "would have committed",}),
+                &json!({"level": "INFO", "msg": "would have run git rebase",}),
+            ],
+        );
     }
 
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
@@ -894,15 +998,19 @@ mod tests {
         autostage_common(&ctx, &file_path);
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 2);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({"level": "INFO", "msg": "committed"})],
+        );
     }
 
     #[test]
@@ -921,15 +1029,23 @@ mod tests {
         repo_utils::add(&ctx.repo, &fp2);
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
 
         assert_eq!(index_stats(&ctx.repo).unwrap().files_changed(), 1);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range."
+            })],
+        );
     }
 
     #[test]
@@ -946,15 +1062,23 @@ mod tests {
         autostage_common(&ctx, &file_path);
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         assert_eq!(revwalk.count(), 1);
 
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "No changes staged, try adding something to the index or \
+                       set absorb.autoStageIfNothingStaged = true"
+            })],
+        );
     }
 
     #[test]
@@ -968,9 +1092,8 @@ mod tests {
             .unwrap();
 
         // run 'git-absorb'
-        let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, o!());
-        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
         assert!(nothing_left_in_index(&ctx.repo).unwrap());
 
         let mut revwalk = ctx.repo.revwalk().unwrap();
@@ -983,6 +1106,14 @@ mod tests {
         let actual_msg = commit.summary().unwrap();
         let expected_msg = format!("fixup! {}", oids.last().unwrap());
         assert_eq!(actual_msg, expected_msg);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+            ],
+        );
     }
 
     #[test]

@@ -38,4 +38,7 @@ memchr = "2.3"
 anyhow = "1.0"
 
 [dev-dependencies]
+iobuffer = "0.2.0"
+serde_json = "1.0.140"
+slog-extlog = "8.1.0"
 tempfile = "3.1"

@@ -115,9 +115,9 @@ https://stackoverflow.com/a/29094904[GIT_SEQUENCE_EDITOR] environment
 variable if you don't need to edit the rebase TODO file.
 
 4. If you are not satisfied (or if something bad happened), `git reset
---soft` to the pre-absorption commit to recover your old state. (You can
-find the commit in question with `git reflog`.) And if you think
-`git absorb` is at fault, please
+--soft PRE_ABSORB_HEAD` to the pre-absorption commit to recover your old
+state. (You can also find the commit in question with `git reflog`.) And
+if you think `git absorb` is at fault, please
 https://github.com/tummychow/git-absorb/issues/new[file an issue].
 
 CONFIGURATION

@@ -532,7 +532,7 @@ mod tests {
 
     use super::*;
     mod log_utils;
-    mod repo_utils;
+    pub mod repo_utils;
 
     #[test]
     fn multiple_fixups_per_commit() {
@@ -929,18 +929,9 @@ mod tests {
 
         // create a fixup commit that 'git rebase' will act on if called
         let tree = repo_utils::stage_file_changes(&ctx, &path);
-        let signature = ctx.repo.signature().unwrap();
         let head_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap();
-        ctx.repo
-            .commit(
-                Some("HEAD"),
-                &signature,
-                &signature,
-                &format!("fixup! {}\n", head_commit.id()),
-                &tree,
-                &[&head_commit],
-            )
-            .unwrap();
+        let fixup_message = format!("fixup! {}\n", head_commit.id());
+        repo_utils::commit(&ctx.repo, "HEAD", &fixup_message, &tree, &[&head_commit]);
 
         // stage one more change so 'git-absorb' won't exit early
         repo_utils::stage_file_changes(&ctx, &path);

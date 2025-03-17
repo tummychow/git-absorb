@@ -123,6 +123,7 @@ where
 mod tests {
 
     use super::*;
+    use crate::tests::repo_utils;
 
     fn empty_slog() -> slog::Logger {
         slog::Logger::root(slog::Discard, o!())
@@ -141,46 +142,6 @@ mod tests {
         (dir, repo)
     }
 
-    fn empty_commit<'repo>(
-        repo: &'repo git2::Repository,
-        update_ref: &str,
-        message: &str,
-        parents: &[&git2::Commit],
-    ) -> git2::Commit<'repo> {
-        let sig = repo.signature().unwrap();
-        let tree = repo
-            .find_tree(repo.treebuilder(None).unwrap().write().unwrap())
-            .unwrap();
-
-        repo.find_commit(
-            repo.commit(Some(update_ref), &sig, &sig, message, &tree, parents)
-                .unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn empty_commit_chain<'repo>(
-        repo: &'repo git2::Repository,
-        update_ref: &str,
-        initial_parents: &[&git2::Commit],
-        length: usize,
-    ) -> Vec<git2::Commit<'repo>> {
-        let mut ret = Vec::with_capacity(length);
-
-        for idx in 0..length {
-            let next = if let Some(last) = ret.last() {
-                // TODO: how to deduplicate the rest of this call if last doesn't live long enough?
-                empty_commit(repo, update_ref, &idx.to_string(), &[last])
-            } else {
-                empty_commit(repo, update_ref, &idx.to_string(), initial_parents)
-            };
-            ret.push(next)
-        }
-
-        assert_eq!(ret.len(), length);
-        ret
-    }
-
     fn assert_stack_matches_chain(length: usize, stack: &[git2::Commit], chain: &[git2::Commit]) {
         assert_eq!(stack.len(), length);
         for (chain_commit, stack_commit) in chain.iter().rev().take(length).zip(stack) {
@@ -191,7 +152,7 @@ mod tests {
     #[test]
     fn test_stack_hides_other_branches() {
         let (_dir, repo) = init_repo();
-        let commits = empty_commit_chain(&repo, "HEAD", &[], 2);
+        let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 2);
         repo.branch("hide", &commits[0], false).unwrap();
 
         assert_stack_matches_chain(
@@ -204,7 +165,7 @@ mod tests {
     #[test]
     fn test_stack_uses_custom_base() {
         let (_dir, repo) = init_repo();
-        let commits = empty_commit_chain(&repo, "HEAD", &[], 3);
+        let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 3);
         repo.branch("hide", &commits[1], false).unwrap();
 
         assert_stack_matches_chain(
@@ -224,7 +185,7 @@ mod tests {
     #[test]
     fn test_stack_stops_at_configured_limit() {
         let (_dir, repo) = init_repo();
-        let commits = empty_commit_chain(&repo, "HEAD", &[], config::MAX_STACK + 2);
+        let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], config::MAX_STACK + 2);
         repo.config()
             .unwrap()
             .set_i64(
@@ -243,12 +204,13 @@ mod tests {
     #[test]
     fn test_stack_stops_at_foreign_author() {
         let (_dir, repo) = init_repo();
-        let old_commits = empty_commit_chain(&repo, "HEAD", &[], 3);
+        let old_commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 3);
         repo.config()
             .unwrap()
             .set_str("user.name", "nobody2")
             .unwrap();
-        let new_commits = empty_commit_chain(&repo, "HEAD", &[old_commits.last().unwrap()], 2);
+        let new_commits =
+            repo_utils::empty_commit_chain(&repo, "HEAD", &[old_commits.last().unwrap()], 2);
 
         assert_stack_matches_chain(
             2,
@@ -260,13 +222,8 @@ mod tests {
     #[test]
     fn test_stack_stops_at_merges() {
         let (_dir, repo) = init_repo();
-        let first = empty_commit(&repo, "HEAD", "first", &[]);
-        // equivalent to checkout --orphan
-        repo.set_head("refs/heads/new").unwrap();
-        let second = empty_commit(&repo, "HEAD", "second", &[]);
-        // the current commit must be the first parent
-        let merge = empty_commit(&repo, "HEAD", "merge", &[&second, &first]);
-        let commits = empty_commit_chain(&repo, "HEAD", &[&merge], 2);
+        let merge = repo_utils::merge_commit(&repo, &[]);
+        let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[&merge], 2);
 
         assert_stack_matches_chain(
             2,

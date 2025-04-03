@@ -30,13 +30,45 @@ pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
 }
 
 fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository) -> Result<()> {
+    let config = config::unify(config, repo);
+
     if !config.rebase_options.is_empty() && !config.and_rebase {
         return Err(anyhow!(
             "REBASE_OPTIONS were specified without --and-rebase flag"
         ));
     }
 
-    let config = config::unify(config, repo);
+    let mut we_added_everything_to_index = false;
+    if nothing_left_in_index(repo)? {
+        if config::auto_stage_if_nothing_staged(repo) {
+            // no matter from what subdirectory we're executing,
+            // "." will still refer to the root workdir.
+            let pathspec = ["."];
+            let mut index = repo.index()?;
+            index.add_all(pathspec.iter(), git2::IndexAddOption::DEFAULT, None)?;
+            index.write()?;
+
+            if nothing_left_in_index(repo)? {
+                warn!(
+                    logger,
+                    "No changes staged, even after auto-staging. \
+                    Try adding something to the index."
+                );
+                return Ok(());
+            }
+
+            we_added_everything_to_index = true;
+        } else {
+            warn!(
+                logger,
+                "No changes staged. \
+                Try adding something to the index or set {} = true.",
+                config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
+            );
+            return Ok(());
+        }
+    }
+
     let stack = stack::working_stack(
         repo,
         config.base,
@@ -44,20 +76,6 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         config.force_detach,
         logger,
     )?;
-
-    let autostage_enabled = config::auto_stage_if_nothing_staged(repo);
-    let index_was_empty = nothing_left_in_index(repo)?;
-    let mut we_added_everything_to_index = false;
-    if autostage_enabled && index_was_empty {
-        we_added_everything_to_index = true;
-
-        // no matter from what subdirectory we're executing,
-        // "." will still refer to the root workdir.
-        let pathspec = ["."];
-        let mut index = repo.index()?;
-        index.add_all(pathspec.iter(), git2::IndexAddOption::DEFAULT, None)?;
-        index.write()?;
-    }
 
     let mut diff_options = Some({
         let mut ret = git2::DiffOptions::new();
@@ -346,7 +364,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         }
     }
 
-    if autostage_enabled && we_added_everything_to_index {
+    if we_added_everything_to_index {
         // now that the fixup commits have been created,
         // we should unstage the remaining changes from the index.
 
@@ -356,22 +374,12 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     }
 
     if patches_considered == 0 {
-        if index_was_empty && !we_added_everything_to_index {
-            warn!(
-                logger,
-                "No changes staged, try adding something \
-                 to the index or set {} = true",
-                config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
-            );
-        } else {
-            warn!(
-                logger,
-                "Could not find a commit to fix up, use \
-                 --base to increase the search range."
-            )
-        }
+        warn!(
+            logger,
+            "Could not find a commit to fix up, use \
+            --base to increase the search range."
+        )
     }
-
     if stack.is_empty() {
         crit!(logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -1535,8 +1543,11 @@ mod tests {
             capturing_logger.visible_logs(),
             vec![&json!({
                 "level": "WARN",
-                "msg": "No changes staged, try adding something to the index or \
-                       set absorb.autoStageIfNothingStaged = true"
+                "msg": format!(
+                    "No changes staged. \
+                    Try adding something to the index or set {} = true.",
+                    config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME,
+                ),
             })],
         );
     }
@@ -1566,9 +1577,8 @@ mod tests {
             capturing_logger.visible_logs(),
             vec![&json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-            })],
+                    "msg": "No changes staged, even after auto-staging. \
+                           Try adding something to the index."})],
         );
     }
 

@@ -130,18 +130,17 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     let mut hunks_with_commit = vec![];
 
     let mut modified_hunks_without_target = 0usize;
-    let mut patches_considered = 0usize;
+    let mut non_modified_patches = 0usize;
     'patch: for index_patch in index.iter() {
         let old_path = index_patch.new_path.as_slice();
         if index_patch.status != git2::Delta::Modified {
-            debug!(logger, "skipped non-modified hunk";
+            debug!(logger, "skipped non-modified patch";
                     "path" => String::from_utf8_lossy(old_path).into_owned(),
                     "status" => format!("{:?}", index_patch.status),
             );
+            non_modified_patches += 1;
             continue 'patch;
         }
-
-        patches_considered += 1;
 
         let mut preceding_hunks_offset = 0isize;
         let mut applied_hunks_offset = 0isize;
@@ -370,11 +369,25 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         index.write()?;
     }
 
-    if patches_considered == 0 {
+    if non_modified_patches == index.len() {
         warn!(
             logger,
-            "Could not find a commit to fix up, use \
-            --base to increase the search range."
+            "No changes were in-place file modifications. \
+            Added, removed, or renamed files cannot be automatically absorbed."
+        );
+        return Ok(());
+    }
+
+    // So long as there was a patch that had the possibility of fixing up
+    // a commit, warn about the presence of patches that will commute with
+    // everything.
+    // Users that auto-stage changes may be accustomed to having untracked files
+    // in their workspace that are not absorbed, so don't warn them.
+    if non_modified_patches > 0 && !we_added_everything_to_index {
+        warn!(
+            logger,
+            "Some changes were not in-place file modifications. \
+            Added, removed, or renamed files cannot be automatically absorbed."
         )
     }
 
@@ -391,7 +404,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         return Ok(());
     }
 
-    if config.and_rebase && patches_considered != 0 {
+    if config.and_rebase && !hunks_with_commit.is_empty() {
         use std::process::Command;
         // unwrap() is safe here, as we exit early if the stack is empty
         let last_commit_in_stack = &stack.last().unwrap().0;
@@ -677,8 +690,8 @@ mod tests {
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
+                    "msg": "No changes were in-place file modifications. \
+                           Added, removed, or renamed files cannot be automatically absorbed.",
                 }),
             ],
         );
@@ -723,6 +736,11 @@ mod tests {
                 }),
                 &json!({
                     "level": "WARN",
+                    "msg": "Some changes were not in-place file modifications. \
+                           Added, removed, or renamed files cannot be automatically absorbed.",
+                }),
+                &json!({
+                    "level": "WARN",
                     "msg": "Could not find a commit to fix up, \
                            use --base to increase the search range.",
                 }),
@@ -752,8 +770,8 @@ mod tests {
             capturing_logger.visible_logs(),
             vec![&json!({
                 "level": "WARN",
-                "msg": "Could not find a commit to fix up, \
-                       use --base to increase the search range.",
+                "msg": "No changes were in-place file modifications. \
+                       Added, removed, or renamed files cannot be automatically absorbed."
             })],
         );
     }
@@ -1465,8 +1483,8 @@ mod tests {
             capturing_logger.visible_logs(),
             vec![&json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range."
+                    "msg": "No changes were in-place file modifications. \
+                           Added, removed, or renamed files cannot be automatically absorbed."
             })],
         );
     }

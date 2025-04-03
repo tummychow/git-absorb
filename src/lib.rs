@@ -44,10 +44,6 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         config.force_detach,
         logger,
     )?;
-    if stack.is_empty() {
-        crit!(logger, "No commits available to fix up, exiting");
-        return Ok(());
-    }
 
     let autostage_enabled = config::auto_stage_if_nothing_staged(repo);
     let index_was_empty = nothing_left_in_index(repo)?;
@@ -374,7 +370,14 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                  --base to increase the search range."
             )
         }
-    } else if config.and_rebase {
+    }
+
+    if stack.is_empty() {
+        crit!(logger, "No commits available to fix up, exiting");
+        return Ok(());
+    }
+
+    if config.and_rebase && patches_considered != 0 {
         use std::process::Command;
         // unwrap() is safe here, as we exit early if the stack is empty
         let last_commit_in_stack = &stack.last().unwrap().0;
@@ -778,6 +781,16 @@ mod tests {
                     "msg": "Please try a different --base",
                 }),
                 &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
+                }),
+                &json!({
                     "level": "CRIT",
                     "msg": "No commits available to fix up, exiting",
                 }),
@@ -811,6 +824,16 @@ mod tests {
                 &json!({
                     "level": "WARN",
                     "msg": "Will not fix up past the merge commit",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
                 }),
                 &json!({
                     "level": "CRIT",
@@ -1031,7 +1054,17 @@ mod tests {
                 &json!({
                     "level": "WARN",
                     "msg": "Will not fix up past commits not authored by you, \
-                           use --force-author to override"
+                           use --force-author to override",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
                 }),
                 &json!({"level": "CRIT", "msg": "No commits available to fix up, exiting"}),
             ],
@@ -1140,7 +1173,20 @@ mod tests {
                     "level": "WARN",
                     "msg": "HEAD is not a branch, but --force-detach used to continue.",
                 }),
-                &json!({"level": "WARN", "msg": "Please use --base to specify a base commit."}),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Please use --base to specify a base commit.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Could not find a commit to fix up, \
+                           use --base to increase the search range.",
+                }),
                 &json!({"level": "CRIT", "msg": "No commits available to fix up, exiting"}),
             ],
         );

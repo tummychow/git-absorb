@@ -129,6 +129,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
 
     let mut hunks_with_commit = vec![];
 
+    let mut modified_hunks_without_target = 0usize;
     let mut patches_considered = 0usize;
     'patch: for index_patch in index.iter() {
         let old_path = index_patch.new_path.as_slice();
@@ -266,11 +267,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 // the hunk commutes with every commit in the stack,
                 // so there is no commit to absorb it into
                 None => {
-                    warn!(
-                        logger,
-                        "Could not find a commit to fix up, use \
-                         --base to increase the search range."
-                    );
+                    modified_hunks_without_target += 1;
                     continue 'hunk;
                 }
             };
@@ -380,6 +377,15 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             --base to increase the search range."
         )
     }
+
+    if modified_hunks_without_target > 0 {
+        warn!(
+            logger,
+            "Could not find a commit to fix up, use \
+            --base to increase the search range."
+        );
+    }
+
     if stack.is_empty() {
         crit!(logger, "No commits available to fix up, exiting");
         return Ok(());
@@ -627,11 +633,6 @@ mod tests {
                     "msg": "Could not find a commit to fix up, \
                            use --base to increase the search range.",
                 }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
             ],
         );
     }
@@ -725,11 +726,6 @@ mod tests {
                     "msg": "Could not find a commit to fix up, \
                            use --base to increase the search range.",
                 }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
             ],
         );
     }
@@ -794,11 +790,6 @@ mod tests {
                            use --base to increase the search range.",
                 }),
                 &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({
                     "level": "CRIT",
                     "msg": "No commits available to fix up, exiting",
                 }),
@@ -832,11 +823,6 @@ mod tests {
                 &json!({
                     "level": "WARN",
                     "msg": "Will not fix up past the merge commit",
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
                 }),
                 &json!({
                     "level": "WARN",
@@ -924,18 +910,11 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-            ],
+            vec![&json!({
+                "level": "WARN",
+                "msg": "Could not find a commit to fix up, \
+                       use --base to increase the search range.",
+            })],
         );
     }
 
@@ -963,18 +942,11 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-            ],
+            vec![&json!({
+                "level": "WARN",
+                "msg": "Could not find a commit to fix up, \
+                       use --base to increase the search range.",
+            })],
         );
     }
 
@@ -1001,18 +973,11 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-            ],
+            vec![&json!({
+                "level": "WARN",
+                "msg": "Could not find a commit to fix up, \
+                       use --base to increase the search range.",
+            })],
         );
     }
 
@@ -1063,11 +1028,6 @@ mod tests {
                     "level": "WARN",
                     "msg": "Will not fix up past commits not authored by you, \
                            use --force-author to override",
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
                 }),
                 &json!({
                     "level": "WARN",
@@ -1184,11 +1144,6 @@ mod tests {
                 &json!({
                     "level": "WARN",
                     "msg": "Please use --base to specify a base commit.",
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
                 }),
                 &json!({
                     "level": "WARN",

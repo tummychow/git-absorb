@@ -69,7 +69,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         }
     }
 
-    let stack = stack::working_stack(
+    let (stack, stack_end_reason) = stack::working_stack(
         repo,
         config.base,
         config.force_author,
@@ -394,14 +394,63 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     if modified_hunks_without_target > 0 {
         warn!(
             logger,
-            "Could not find a commit to fix up, use \
-            --base to increase the search range."
+            "Some file modifications did not have an available commit to fix up. \
+            You will have to manually create fixup commits."
         );
-    }
 
-    if stack.is_empty() {
-        crit!(logger, "No commits available to fix up, exiting");
-        return Ok(());
+        match stack_end_reason {
+            stack::StackEndReason::ReachedRoot => {
+                warn!(
+                    logger,
+                    "Cannot fix up past first commit in the repository.";
+                );
+            }
+            stack::StackEndReason::ReachedMergeCommit => {
+                warn!(
+                    logger,
+                    "Cannot fix up past a merge commit";
+                    "commit" => match stack.last() {
+                        Some(commit) => commit.0.id().to_string(),
+                        None => head_commit.id().to_string(),
+                    }
+                );
+            }
+            stack::StackEndReason::ReachedAnotherAuthor => {
+                warn!(
+                    logger,
+                    "Will not fix up past commits by another author. \
+                    Use --force-author to override";
+                    "commit" => match stack.last() {
+                        Some(commit) => commit.0.id().to_string(),
+                        None => head_commit.id().to_string(),
+                    }
+                );
+            }
+            stack::StackEndReason::ReachedLimit => {
+                warn!(
+                    logger,
+                    "Will not fix up past maximum stack limit. \
+                    Use --base or configure {} to override",
+                    config::MAX_STACK_CONFIG_NAME;
+                    "limit" => config::max_stack(repo),
+                );
+            }
+            stack::StackEndReason::CommitsHiddenByBase => {
+                warn!(
+                   logger,
+                   "Will not fix up past specified base commit. \
+                   Consider using --base to specify a different base commit";
+                   "base" => config.base.unwrap(),
+                );
+            }
+            stack::StackEndReason::CommitsHiddenByBranches => {
+                warn!(
+                    logger,
+                    "Will not fix up commits reachable by other branches. \
+                    Use --base to specify a base commit.";
+                );
+            }
+        }
     }
 
     if config.and_rebase && !hunks_with_commit.is_empty() {
@@ -637,14 +686,17 @@ mod tests {
             vec![
                 &json!({
                     "level": "WARN",
-                    "msg": "stack limit reached, \
-                           use --base or configure absorb.maxStack to override",
-                    "limit": config::MAX_STACK,
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
+                    "msg": format!(
+                        "Will not fix up past maximum stack limit. \
+                        Use --base or configure {} to override",
+                        config::MAX_STACK_CONFIG_NAME
+                    ),
+                    "limit": config::MAX_STACK,
                 }),
             ],
         );
@@ -681,19 +733,11 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![
-                &json!({
-                    "level": "WARN",
-                    "msg": "stack limit reached, \
-                           use --base or configure absorb.maxStack to override",
-                    "limit": config::MAX_STACK,
-                }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "No changes were in-place file modifications. \
-                           Added, removed, or renamed files cannot be automatically absorbed.",
-                }),
-            ],
+            vec![&json!({
+                "level": "WARN",
+                "msg": "No changes were in-place file modifications. \
+                       Added, removed, or renamed files cannot be automatically absorbed.",
+            })],
         );
     }
 
@@ -730,19 +774,21 @@ mod tests {
             vec![
                 &json!({
                     "level": "WARN",
-                    "msg": "stack limit reached, \
-                           use --base or configure absorb.maxStack to override",
-                    "limit": config::MAX_STACK,
-                }),
-                &json!({
-                    "level": "WARN",
                     "msg": "Some changes were not in-place file modifications. \
                            Added, removed, or renamed files cannot be automatically absorbed.",
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": format!(
+                        "Will not fix up past maximum stack limit. \
+                        Use --base or configure {} to override",
+                        config::MAX_STACK_CONFIG_NAME
+                    ),
                 }),
             ],
         );
@@ -800,16 +846,14 @@ mod tests {
             vec![
                 &json!({
                     "level": "WARN",
-                    "msg": "Please try a different --base",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({
-                    "level": "CRIT",
-                    "msg": "No commits available to fix up, exiting",
+                    "msg": "Will not fix up past specified base commit. \
+                           Consider using --base to specify a different base commit",
+                    "base": "HEAD",
                 }),
             ],
         );
@@ -840,16 +884,12 @@ mod tests {
             vec![
                 &json!({
                     "level": "WARN",
-                    "msg": "Will not fix up past the merge commit",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({
-                    "level": "CRIT",
-                    "msg": "No commits available to fix up, exiting",
+                    "msg": "Cannot fix up past a merge commit",
                 }),
             ],
         );
@@ -887,16 +927,10 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![
-                &json!({
-                    "level": "WARN",
-                    "msg": "Will not fix up past the merge commit",
-                }),
-                &json!({
-                    "level": "INFO",
-                    "msg": "committed",
-                }),
-            ],
+            vec![&json!({
+                "level": "INFO",
+                "msg": "committed",
+            })],
         );
     }
 
@@ -928,16 +962,22 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![&json!({
-                "level": "WARN",
-                "msg": "Could not find a commit to fix up, \
-                       use --base to increase the search range.",
-            })],
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Cannot fix up past a merge commit",
+                }),
+            ],
         );
     }
 
     #[test]
-    fn first_hidden_commit_is_foreign_author() {
+    fn first_hidden_commit_is_by_another_author() {
         let (ctx, file_path) = repo_utils::prepare_repo();
         let first_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap();
         ctx.repo
@@ -960,11 +1000,18 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![&json!({
-                "level": "WARN",
-                "msg": "Could not find a commit to fix up, \
-                       use --base to increase the search range.",
-            })],
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Will not fix up past commits by another author. \
+                           Use --force-author to override",
+                }),
+            ],
         );
     }
 
@@ -991,11 +1038,18 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![&json!({
-                "level": "WARN",
-                "msg": "Could not find a commit to fix up, \
-                       use --base to increase the search range.",
-            })],
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Will not fix up commits reachable by other branches. \
+                           Use --base to specify a base commit.",
+                }),
+            ],
         );
     }
 
@@ -1024,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn foreign_author() {
+    fn another_author() {
         let ctx = repo_utils::prepare_and_stage();
 
         repo_utils::become_author(&ctx.repo, "nobody2", "nobody2@example.com");
@@ -1044,21 +1098,20 @@ mod tests {
             vec![
                 &json!({
                     "level": "WARN",
-                    "msg": "Will not fix up past commits not authored by you, \
-                           use --force-author to override",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
+                    "msg": "Will not fix up past commits by another author. \
+                           Use --force-author to override"
                 }),
-                &json!({"level": "CRIT", "msg": "No commits available to fix up, exiting"}),
             ],
         );
     }
 
     #[test]
-    fn foreign_author_with_force_author_flag() {
+    fn another_author_with_force_author_flag() {
         let ctx = repo_utils::prepare_and_stage();
 
         repo_utils::become_author(&ctx.repo, "nobody2", "nobody2@example.com");
@@ -1087,7 +1140,7 @@ mod tests {
     }
 
     #[test]
-    fn foreign_author_with_force_author_config() {
+    fn another_author_with_force_author_config() {
         let ctx = repo_utils::prepare_and_stage();
 
         repo_utils::become_author(&ctx.repo, "nobody2", "nobody2@example.com");
@@ -1157,18 +1210,17 @@ mod tests {
             vec![
                 &json!({
                     "level": "WARN",
-                    "msg": "HEAD is not a branch, but --force-detach used to continue.",
+                    "msg": "HEAD is not a branch, but --force-detach used to continue."}),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Some file modifications did not have an available commit to fix up. \
+                           You will have to manually create fixup commits.",
                 }),
                 &json!({
                     "level": "WARN",
-                    "msg": "Please use --base to specify a base commit.",
+                    "msg": "Will not fix up commits reachable by other branches. \
+                    Use --base to specify a base commit."
                 }),
-                &json!({
-                    "level": "WARN",
-                    "msg": "Could not find a commit to fix up, \
-                           use --base to increase the search range.",
-                }),
-                &json!({"level": "CRIT", "msg": "No commits available to fix up, exiting"}),
             ],
         );
     }

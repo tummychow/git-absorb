@@ -331,6 +331,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 let commit_short_id = commit_short_id.as_str().expect("the commit short id is always a valid ascii string by definition (its a hex string)");
                 info!(logger, "committed";
                       "commit" => commit_short_id,
+                      "fixup" => dest_commit_locator,
                       "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
             } else {

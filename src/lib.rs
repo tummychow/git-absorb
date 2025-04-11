@@ -19,6 +19,7 @@ pub struct Config<'a> {
     pub rebase_options: &'a Vec<&'a str>,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
+    pub message: Option<&'a str>,
 }
 
 pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
@@ -987,5 +988,6 @@ mod tests {
         rebase_options: &Vec::new(),
         whole_file: false,
         one_fixup_per_commit: false,
+        message: None,
     };
 }

@@ -592,12 +592,18 @@ enum Announcement<'r> {
 
 fn announce(logger: &slog::Logger, announcement: Announcement) {
     match announcement {
-        Announcement::Committed(commit, diff) => info!(
-            logger,
-            "committed";
-            "commit" => &commit.id().to_string(),
-            "header" => format!("+{},-{}", &diff.insertions(), &diff.deletions())
-        ),
+        Announcement::Committed(commit, diff) => {
+            let commit_short_id = commit.as_object().short_id().unwrap();
+            let commit_short_id = commit_short_id
+                .as_str()
+                .expect("the commit short id is always a valid ASCII string");
+            info!(
+                logger,
+                "committed";
+                "commit" => commit_short_id,
+                "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
+            );
+        }
         Announcement::WouldHaveCommitted(fixup, diff) => info!(
             logger,
             "would have committed";

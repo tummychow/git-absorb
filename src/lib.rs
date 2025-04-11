@@ -337,7 +337,10 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     &head_tree,
                     &[&head_commit],
                 )?)?;
-                announce(logger, Announcement::Committed(&head_commit, &diff));
+                announce(
+                    logger,
+                    Announcement::Committed(&head_commit, dest_commit_locator, &diff),
+                );
             } else {
                 announce(
                     logger,
@@ -572,7 +575,7 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
 
 // Messages that will be shown to users during normal operations (not debug messages).
 enum Announcement<'r> {
-    Committed(&'r git2::Commit<'r>, &'r git2::DiffStats),
+    Committed(&'r git2::Commit<'r>, &'r str, &'r git2::DiffStats),
     WouldHaveCommitted(&'r str, &'r git2::DiffStats),
     WouldHaveRebased(&'r std::process::Command),
     HowToSquash(String),
@@ -592,7 +595,7 @@ enum Announcement<'r> {
 
 fn announce(logger: &slog::Logger, announcement: Announcement) {
     match announcement {
-        Announcement::Committed(commit, diff) => {
+        Announcement::Committed(commit, destination, diff) => {
             let commit_short_id = commit.as_object().short_id().unwrap();
             let commit_short_id = commit_short_id
                 .as_str()
@@ -600,6 +603,7 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
             info!(
                 logger,
                 "committed";
+                "fixup" => destination,
                 "commit" => commit_short_id,
                 "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
             );
@@ -738,8 +742,8 @@ mod tests {
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
-                &json!({"level": "INFO", "msg": "committed"}),
-                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed", "fixup": "Initial commit."}),
+                &json!({"level": "INFO", "msg": "committed", "fixup": "Initial commit."}),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -1171,7 +1175,7 @@ mod tests {
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
-                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed","fixup": "Initial commit.",}),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -1606,11 +1610,11 @@ mod tests {
             vec![
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit.",
+                    "msg": "would have committed", "fixup": "Initial commit."
                 }),
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit.",
+                    "msg": "would have committed", "fixup": "Initial commit."
                 }),
             ],
         );

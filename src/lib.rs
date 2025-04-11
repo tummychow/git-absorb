@@ -320,11 +320,17 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 .stats()?;
             if !config.dry_run {
                 head_tree = new_head_tree;
+                let mut message = format!("fixup! {}\n", dest_commit_locator);
+                if let Some(m) = config.message.filter(|m| !m.is_empty()) {
+                    message.push('\n');
+                    message.push_str(m);
+                    message.push('\n');
+                };
                 head_commit = repo.find_commit(repo.commit(
                     Some("HEAD"),
                     &signature,
                     &signature,
-                    &format!("fixup! {}\n", dest_commit_locator),
+                    &message,
                     &head_tree,
                     &[&head_commit],
                 )?)?;

@@ -77,7 +77,12 @@ fn main() {
     }
 
     let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_term::FullFormat::new(decorator)
+        // Don't write a timestamp, as requested in #126
+        // I am currently running git absorb myself, I know what time it is :)
+        .use_custom_timestamp(|_| Ok(()))
+        .build()
+        .fuse();
     let drain = std::sync::Mutex::new(drain).fuse();
 
     let drain = slog::LevelFilter::new(

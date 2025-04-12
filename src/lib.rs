@@ -87,7 +87,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 )?,
             )?;
             trace!(logger, "parsed commit diff";
-                   "commit" => commit.id().to_string(),
+                   "commit" => commit_id(commit),
                    "diff" => format!("{:?}", diff),
             );
             diffs.push(diff);
@@ -190,7 +190,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
 
             'commit: for (commit, diff) in &stack {
                 let c_logger = logger.new(o!(
-                    "commit" => commit.id().to_string(),
+                    "commit" => commit_id(commit),
                 ));
                 let next_patch = match diff.by_new(commuted_old_path) {
                     Some(patch) => patch,
@@ -305,7 +305,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             // so it's okay to use strings instead of bytes here
             // https://docs.rs/git2/0.7.5/src/git2/repo.rs.html#998
             // https://libgit2.org/libgit2/#HEAD/group/commit/git_commit_create
-            let dest_commit_id = current.dest_commit.id().to_string();
+            let dest_commit_id = commit_id(current.dest_commit);
             let dest_commit_locator = match target_always_sha {
                 true => &dest_commit_id,
                 false => current
@@ -328,7 +328,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     &[&head_commit],
                 )?)?;
                 info!(logger, "committed";
-                      "commit" => head_commit.id().to_string(),
+                      "commit" => commit_id(&head_commit),
                       "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
                 );
             } else {
@@ -406,7 +406,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         } else {
             // Use a range that is guaranteed to include all the commits we might have
             // committed "fixup!" commits for.
-            let base_commit_sha = last_commit_in_stack.parent(0)?.id().to_string();
+            let base_commit_sha = commit_id(&last_commit_in_stack.parent(0)?);
             command.arg(&base_commit_sha);
         }
 
@@ -515,6 +515,10 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
     let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
     let stats = diff.stats()?;
     Ok(stats)
+}
+
+fn commit_id(commit: &git2::Commit) -> String {
+    commit.id().to_string()
 }
 
 #[cfg(test)]

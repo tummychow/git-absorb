@@ -10,6 +10,8 @@ mod stack;
 use std::io::Write;
 use std::path::Path;
 
+type WorkingStack<'a> = Vec<(git2::Commit<'a>, owned::Diff)>;
+
 pub struct Config<'a> {
     pub dry_run: bool,
     pub force_author: bool,
@@ -404,9 +406,8 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         if number_of_parents == 0 {
             command.arg("--root");
         } else {
-            // Use a range that is guaranteed to include all the commits we might have
-            // committed "fixup!" commits for.
-            let base_commit_sha = commit_id(&last_commit_in_stack.parent(0)?);
+            let base_commit_sha = get_rebase_commit_from_stack(&stack)?;
+            let base_commit_sha = commit_id(&base_commit_sha);
             command.arg(&base_commit_sha);
         }
 
@@ -515,6 +516,15 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
     let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
     let stats = diff.stats()?;
     Ok(stats)
+}
+
+fn get_rebase_commit_from_stack<'a>(stack: &WorkingStack<'a>) -> Result<git2::Commit<'a>> {
+    // unwrap() is safe here, as we exit early if the stack is empty
+    let last_commit_in_stack = &stack.last().unwrap().0;
+    // Use a range that is guaranteed to include all the commits we might have
+    // committed "fixup!" commits for.
+    let rebase_commit = last_commit_in_stack.parent(0)?;
+    Ok(rebase_commit)
 }
 
 fn commit_id(commit: &git2::Commit) -> String {

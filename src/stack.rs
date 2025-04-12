@@ -121,7 +121,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tempfile;
 
     use super::*;
 

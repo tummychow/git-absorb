@@ -56,10 +56,10 @@ lines
 /// Stage the changes made to `path`.
 pub fn add<'r>(repo: &'r git2::Repository, path: &Path) -> git2::Tree<'r> {
     let mut index = repo.index().unwrap();
-    index.add_path(&path).unwrap();
+    index.add_path(path).unwrap();
     index.write().unwrap();
 
-    let tree_id = index.write_tree_to(&repo).unwrap();
+    let tree_id = index.write_tree_to(repo).unwrap();
     repo.find_tree(tree_id).unwrap()
 }
 
@@ -71,15 +71,15 @@ pub fn prepare_and_stage() -> Context {
 }
 
 /// Modify a file in the repository and stage the changes.
-pub fn stage_file_changes<'r>(ctx: &'r Context, file_path: &PathBuf) -> Tree<'r> {
+pub fn stage_file_changes<'r>(ctx: &'r Context, file_path: &Path) -> Tree<'r> {
     // add some lines to our file
-    let path = ctx.join(&file_path);
+    let path = ctx.join(file_path);
     let contents = std::fs::read_to_string(&path).unwrap();
     let modifications = format!("new_line1\n{contents}\nnew_line2");
     std::fs::write(&path, &modifications).unwrap();
 
     // stage it
-    add(&ctx.repo, &file_path)
+    add(&ctx.repo, file_path)
 }
 
 /// Set the named repository config option to value.

@@ -32,6 +32,13 @@ jobs:
       - name: Check format
         run: cargo fmt --check
 
+  check-clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check clippy lints
+        run: cargo clippy
+
   build-man-page:
     name: build-man-page
     runs-on: ubuntu-latest

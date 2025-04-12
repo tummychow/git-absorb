@@ -19,6 +19,7 @@ pub struct Config<'a> {
     pub rebase_options: &'a Vec<&'a str>,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
+    pub message: Option<&'a str>,
 }
 
 pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
@@ -319,11 +320,17 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 .stats()?;
             if !config.dry_run {
                 head_tree = new_head_tree;
+                let mut message = format!("fixup! {}\n", dest_commit_locator);
+                if let Some(m) = config.message.filter(|m| !m.is_empty()) {
+                    message.push('\n');
+                    message.push_str(m);
+                    message.push('\n');
+                };
                 head_commit = repo.find_commit(repo.commit(
                     Some("HEAD"),
                     &signature,
                     &signature,
-                    &format!("fixup! {}\n", dest_commit_locator),
+                    &message,
                     &head_tree,
                     &[&head_commit],
                 )?)?;
@@ -978,6 +985,59 @@ mod tests {
         assert_eq!(actual_msg, expected_msg);
     }
 
+    #[test]
+    fn fixup_message_option_left_out_sets_only_summary() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        run_with_repo(&logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        let oids: Vec<git2::Oid> = revwalk.by_ref().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(oids.len(), 3);
+
+        let fixup_commit = ctx.repo.find_commit(oids[0]).unwrap();
+        let fixed_up_commit = ctx.repo.find_commit(*oids.last().unwrap()).unwrap();
+        let actual_msg = fixup_commit.message().unwrap();
+        let expected_msg = fixed_up_commit.message().unwrap();
+        let expected_msg = format!("fixup! {}\n", expected_msg);
+        assert_eq!(actual_msg, expected_msg);
+    }
+
+    #[test]
+    fn fixup_message_option_provided_sets_message() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let drain = slog::Discard;
+        let logger = slog::Logger::root(drain, o!());
+        let fixup_message_body = "git-absorb is my favorite git tool!";
+        let config = Config {
+            message: Some(fixup_message_body),
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&logger, &config, &ctx.repo).unwrap();
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        let oids: Vec<git2::Oid> = revwalk.by_ref().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(oids.len(), 3);
+
+        let fixup_commit = ctx.repo.find_commit(oids[0]).unwrap();
+        let fixed_up_commit = ctx.repo.find_commit(*oids.last().unwrap()).unwrap();
+        let actual_msg = fixup_commit.message().unwrap();
+        let expected_msg = fixed_up_commit.message().unwrap();
+        let expected_msg = format!("fixup! {}\n\n{}\n", expected_msg, fixup_message_body);
+        assert_eq!(actual_msg, expected_msg);
+    }
+
     const DEFAULT_CONFIG: Config = Config {
         dry_run: false,
         force_author: false,
@@ -987,5 +1047,6 @@ mod tests {
         rebase_options: &Vec::new(),
         whole_file: false,
         one_fixup_per_commit: false,
+        message: None,
     };
 }

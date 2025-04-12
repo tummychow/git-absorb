@@ -44,6 +44,9 @@ struct Cli {
     /// Only generate one fixup per commit
     #[clap(long, short = 'F')]
     one_fixup_per_commit: bool,
+    /// Commit message body that is given to all fixup commits
+    #[clap(long, short)]
+    message: Option<String>,
 }
 
 fn main() {
@@ -59,6 +62,7 @@ fn main() {
         gen_completions,
         whole_file,
         one_fixup_per_commit,
+        message,
     } = Cli::parse();
 
     if let Some(shell) = gen_completions {
@@ -109,6 +113,7 @@ fn main() {
             rebase_options: &rebase_options,
             whole_file,
             one_fixup_per_commit,
+            message: message.as_deref(),
         },
     ) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

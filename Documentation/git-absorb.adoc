@@ -90,6 +90,10 @@ OPTIONS
 --base <base>::
         Use this commit as the base of the absorb stack
 
+-m <MESSAGE>::
+--message <MESSAGE>::
+        A simple commit message body that will be used for **all** generated fixup commits.
+
 --gen-completions <SHELL>::
         Generate completions
         [possible values: bash, fish, nushell, zsh, powershell, elvish]

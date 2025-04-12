@@ -38,16 +38,7 @@ lines
     // make the borrow-checker happy by introducing a new scope
     {
         let tree = add(&repo, &path);
-        let signature = repo.signature().unwrap();
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            "Initial commit.",
-            &tree,
-            &[],
-        )
-        .unwrap();
+        commit(&repo, "HEAD", "Initial commit.", &tree, &[]);
     }
 
     (Context { repo, dir }, path)
@@ -112,4 +103,82 @@ pub fn delete_branch(repo: &git2::Repository, branch_name: &str) {
 /// Set the named repository config flag to true.
 pub fn set_config_flag(repo: &git2::Repository, flag_name: &str) {
     repo.config().unwrap().set_str(flag_name, "true").unwrap();
+}
+
+/// Make a trio of commits to form a merge:
+/// two parents and a child. The parents branch from the supplied grandparents.
+pub fn merge_commit<'repo>(
+    repo: &'repo git2::Repository,
+    grandparents: &[&git2::Commit],
+) -> git2::Commit<'repo> {
+    let first_commit = empty_commit(repo, "HEAD", "first commit", grandparents);
+    let second_commit = empty_commit(repo, "refs/heads/topic", "second commit", grandparents);
+    empty_commit(
+        repo,
+        "HEAD",
+        "merge commit",
+        &[&first_commit, &second_commit],
+    )
+}
+
+/// Add a chain of empty commits to the repository.
+/// The first commit will have the given parents, and each subsequent commit will have the previous
+/// commit as its parent.
+/// Commit messages will be automatically generated.
+pub fn empty_commit_chain<'repo>(
+    repo: &'repo git2::Repository,
+    update_ref: &str,
+    initial_parents: &[&git2::Commit],
+    length: usize,
+) -> Vec<git2::Commit<'repo>> {
+    let mut ret = Vec::with_capacity(length);
+
+    for idx in 0..length {
+        let next = if let Some(last) = ret.last() {
+            // TODO: how to deduplicate the rest of this call if last doesn't live long enough?
+            empty_commit(repo, update_ref, &idx.to_string(), &[last])
+        } else {
+            empty_commit(repo, update_ref, &idx.to_string(), initial_parents)
+        };
+        ret.push(next)
+    }
+
+    assert_eq!(ret.len(), length);
+    ret
+}
+
+/// Add an empty commit to the repository.
+pub fn empty_commit<'repo>(
+    repo: &'repo git2::Repository,
+    update_ref: &str,
+    message: &str,
+    parents: &[&git2::Commit],
+) -> git2::Commit<'repo> {
+    let tree = if repo.is_empty().unwrap() {
+        repo.find_tree(repo.treebuilder(None).unwrap().write().unwrap())
+            .unwrap()
+    } else {
+        let head = repo.head().unwrap();
+        let head_commit = head.peel_to_commit().unwrap();
+
+        // Get the tree of the current HEAD commit
+        head_commit.tree().unwrap()
+    };
+    commit(repo, update_ref, message, &tree, parents)
+}
+
+/// Add a new commit to the repository.
+pub fn commit<'repo>(
+    repo: &'repo git2::Repository,
+    update_ref: &str,
+    message: &str,
+    tree: &Tree,
+    parents: &[&git2::Commit],
+) -> git2::Commit<'repo> {
+    let sig = repo.signature().unwrap();
+    repo.find_commit(
+        repo.commit(Some(update_ref), &sig, &sig, message, &tree, parents)
+            .unwrap(),
+    )
+    .unwrap()
 }

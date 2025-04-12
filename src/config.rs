@@ -32,14 +32,14 @@ pub fn unify<'config>(config: &'config Config, repo: &Repository) -> Config<'con
         // like we do here is no longer sufficient. but until then, this is fine.
         one_fixup_per_commit: config.one_fixup_per_commit
             || bool_value(
-                &repo,
+                repo,
                 ONE_FIXUP_PER_COMMIT_CONFIG_NAME,
                 ONE_FIXUP_PER_COMMIT_DEFAULT,
             ),
         force_author: config.force_author
-            || bool_value(&repo, FORCE_AUTHOR_CONFIG_NAME, FORCE_AUTHOR_DEFAULT),
+            || bool_value(repo, FORCE_AUTHOR_CONFIG_NAME, FORCE_AUTHOR_DEFAULT),
         force_detach: config.force_detach
-            || bool_value(&repo, FORCE_DETACH_CONFIG_NAME, FORCE_DETACH_DEFAULT),
+            || bool_value(repo, FORCE_DETACH_CONFIG_NAME, FORCE_DETACH_DEFAULT),
         ..*config
     }
 }
@@ -56,7 +56,7 @@ pub fn max_stack(repo: &git2::Repository) -> usize {
 
 pub fn auto_stage_if_nothing_staged(repo: &git2::Repository) -> bool {
     bool_value(
-        &repo,
+        repo,
         AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME,
         AUTO_STAGE_IF_NOTHING_STAGED_DEFAULT,
     )
@@ -64,7 +64,7 @@ pub fn auto_stage_if_nothing_staged(repo: &git2::Repository) -> bool {
 
 pub fn fixup_target_always_sha(repo: &git2::Repository) -> bool {
     bool_value(
-        &repo,
+        repo,
         FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME,
         FIXUP_TARGET_ALWAYS_SHA_DEFAULT,
     )

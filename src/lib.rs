@@ -25,7 +25,7 @@ pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
     let repo = git2::Repository::open_from_env()?;
     debug!(logger, "repository found"; "path" => repo.path().to_str());
 
-    run_with_repo(&logger, &config, &repo)
+    run_with_repo(logger, config, &repo)
 }
 
 fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository) -> Result<()> {
@@ -35,7 +35,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         ));
     }
 
-    let config = config::unify(&config, repo);
+    let config = config::unify(config, repo);
     let stack = stack::working_stack(
         repo,
         config.base,
@@ -382,7 +382,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         // This simplifies writing tests that execute from within git-absorb's source directory
         // but operate on temporary repositories created elsewhere.
         // (The tests could explicitly change directories, but then must be serialized.)
-        let repo_path = repo.path().parent().map(Path::to_str).flatten();
+        let repo_path = repo.path().parent().and_then(Path::to_str);
         match repo_path {
             Some(path) => {
                 command.args(["-C", path]);
@@ -816,7 +816,7 @@ mod tests {
         assert!(is_something_in_index);
 
         let pre_absorb_ref_commit = ctx.repo.references_glob("PRE_ABSORB_HEAD").unwrap().last();
-        assert!(matches!(pre_absorb_ref_commit, None));
+        assert!(pre_absorb_ref_commit.is_none());
     }
 
     #[test]
@@ -861,7 +861,7 @@ mod tests {
 
     fn autostage_common(ctx: &repo_utils::Context, file_path: &PathBuf) -> (PathBuf, PathBuf) {
         // 1 modification w/o staging
-        let path = ctx.join(&file_path);
+        let path = ctx.join(file_path);
         let contents = std::fs::read_to_string(&path).unwrap();
         let modifications = format!("{contents}\nnew_line2");
         std::fs::write(&path, &modifications).unwrap();

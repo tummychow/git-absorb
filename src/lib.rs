@@ -99,6 +99,9 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         (stack.into_iter().zip(diffs).collect(), summary_counts)
     };
 
+    let rebase_commit = get_rebase_commit_from_stack(&stack)?;
+    info!(logger, "base commit selected"; "commit" => commit_id(&rebase_commit), "message" => rebase_commit.summary());
+
     let mut head_tree = repo.head()?.peel_to_tree()?;
     let index = owned::Diff::new(&repo.diff_tree_to_index(
         Some(&head_tree),

@@ -17,6 +17,9 @@ include = [
 ]
 rust-version = "1.74.1"
 
+[profile.release]
+lto = true
+
 [[bin]]
 name = "git-absorb"
 path = "src/main.rs"

@@ -4,13 +4,23 @@ use std::collections::HashMap;
 
 use crate::config;
 
+#[derive(Debug, PartialEq)]
+pub enum StackEndReason {
+    ReachedRoot,
+    ReachedMergeCommit,
+    ReachedAnotherAuthor,
+    ReachedLimit,
+    CommitsHiddenByBase,
+    CommitsHiddenByBranches,
+}
+
 pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
     user_provided_base: Option<&str>,
     force_author: bool,
     force_detach: bool,
     logger: &slog::Logger,
-) -> Result<Vec<git2::Commit<'repo>>> {
+) -> Result<(Vec<git2::Commit<'repo>>, StackEndReason)> {
     let head = repo.head()?;
     debug!(logger, "head found"; "head" => head.name());
 
@@ -41,7 +51,7 @@ pub fn working_stack<'repo>(
         None => None,
     };
 
-    if let Some(base_commit) = base_commit {
+    if let Some(base_commit) = &base_commit {
         revwalk.hide(base_commit.id())?;
         debug!(logger, "commit hidden"; "commit" => base_commit.id().to_string());
     } else {
@@ -62,41 +72,67 @@ pub fn working_stack<'repo>(
     }
 
     let mut ret = Vec::new();
-    let mut commits_considered = 0usize;
+    let mut stack_end_reason: Option<StackEndReason> = None;
     let sig = repo.signature();
     for rev in revwalk {
-        commits_considered += 1;
         let commit = repo.find_commit(rev?)?;
-        if commit.parents().len() > 1 {
-            warn!(logger, "Will not fix up past the merge commit"; "commit" => commit.id().to_string());
+        if commit.parent_count() > 1 {
+            debug!(logger, "Stack ends at merge commit"; "commit" => commit.id().to_string());
+            return Ok((ret, StackEndReason::ReachedMergeCommit));
+        }
+
+        if !force_author && is_by_another_author(&sig, &commit) {
+            debug!(logger, "Stopping before commit by another author.";
+                  "commit" => commit.id().to_string());
+            stack_end_reason = Some(StackEndReason::ReachedAnotherAuthor);
             break;
         }
-        if let Ok(ref sig) = sig {
-            if !force_author
-                && (commit.author().name_bytes() != sig.name_bytes()
-                    || commit.author().email_bytes() != sig.email_bytes())
-            {
-                warn!(logger, "Will not fix up past commits not authored by you, use --force-author to override";
-                      "commit" => commit.id().to_string());
-                break;
-            }
-        }
+
         if ret.len() == config::max_stack(repo) && user_provided_base.is_none() {
-            warn!(logger, "stack limit reached, use --base or configure absorb.maxStack to override";
+            debug!(logger, "Stopping at stack limit.";
                   "limit" => ret.len());
+            stack_end_reason = Some(StackEndReason::ReachedLimit);
             break;
         }
+
         debug!(logger, "commit pushed onto stack"; "commit" => commit.id().to_string());
         ret.push(commit);
     }
-    if commits_considered == 0 {
-        if user_provided_base.is_none() {
-            warn!(logger, "Please use --base to specify a base commit.");
-        } else {
-            warn!(logger, "Please try a different --base");
+
+    match stack_end_reason {
+        Some(end_reason) => Ok((ret, end_reason)),
+        None => {
+            // We walked off the available commits. Either we reached the root of the repository
+            // or all the remaining commits are hidden.
+            // Even if the next commit is hidden, it may have been rejected for other reasons,
+            // such as being a merge commit. Find the most dire reason we couldn't use the next
+            // commit (if any) and report it.
+            let last_stack_commit = ret.last();
+            let hidden_commit = match last_stack_commit {
+                None => head.peel_to_commit()?,
+                Some(commit) => {
+                    if commit.parent_count() == 0 {
+                        return Ok((ret, StackEndReason::ReachedRoot));
+                    }
+                    commit.parent(0)?
+                }
+            };
+
+            if hidden_commit.parent_count() > 1 {
+                return Ok((ret, StackEndReason::ReachedMergeCommit));
+            }
+
+            if !force_author && is_by_another_author(&sig, &hidden_commit) {
+                return Ok((ret, StackEndReason::ReachedAnotherAuthor));
+            }
+
+            if user_provided_base.is_some() {
+                Ok((ret, StackEndReason::CommitsHiddenByBase))
+            } else {
+                Ok((ret, StackEndReason::CommitsHiddenByBranches))
+            }
         }
     }
-    Ok(ret)
 }
 
 pub fn summary_counts<'repo, 'a, I>(commits: I) -> HashMap<String, u64>
@@ -117,6 +153,18 @@ where
         *count += 1;
     }
     ret
+}
+
+fn is_by_another_author(
+    sig: &Result<git2::Signature, git2::Error>,
+    hidden_commit: &git2::Commit,
+) -> bool {
+    if let Ok(ref sig) = sig {
+        hidden_commit.author().name_bytes() != sig.name_bytes()
+            || hidden_commit.author().email_bytes() != sig.email_bytes()
+    } else {
+        false
+    }
 }
 
 #[cfg(test)]
@@ -155,11 +203,9 @@ mod tests {
         let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 2);
         repo.branch("hide", &commits[0], false).unwrap();
 
-        assert_stack_matches_chain(
-            1,
-            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
-            &commits,
-        );
+        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        assert_stack_matches_chain(1, &stack, &commits);
+        assert_eq!(reason, StackEndReason::CommitsHiddenByBranches);
     }
 
     #[test]
@@ -168,18 +214,16 @@ mod tests {
         let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 3);
         repo.branch("hide", &commits[1], false).unwrap();
 
-        assert_stack_matches_chain(
-            2,
-            &working_stack(
-                &repo,
-                Some(&commits[0].id().to_string()),
-                false,
-                false,
-                &empty_slog(),
-            )
-            .unwrap(),
-            &commits,
-        );
+        let (stack, reason) = working_stack(
+            &repo,
+            Some(&commits[0].id().to_string()),
+            false,
+            false,
+            &empty_slog(),
+        )
+        .unwrap();
+        assert_stack_matches_chain(2, &stack, &commits);
+        assert_eq!(reason, StackEndReason::CommitsHiddenByBase);
     }
 
     #[test]
@@ -194,15 +238,13 @@ mod tests {
             )
             .unwrap();
 
-        assert_stack_matches_chain(
-            config::MAX_STACK + 1,
-            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
-            &commits,
-        );
+        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        assert_stack_matches_chain(config::MAX_STACK + 1, &stack, &commits);
+        assert_eq!(reason, StackEndReason::ReachedLimit);
     }
 
     #[test]
-    fn test_stack_stops_at_foreign_author() {
+    fn test_stack_stops_at_another_author() {
         let (_dir, repo) = init_repo();
         let old_commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 3);
         repo.config()
@@ -212,11 +254,9 @@ mod tests {
         let new_commits =
             repo_utils::empty_commit_chain(&repo, "HEAD", &[old_commits.last().unwrap()], 2);
 
-        assert_stack_matches_chain(
-            2,
-            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
-            &new_commits,
-        );
+        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        assert_stack_matches_chain(2, &stack, &new_commits);
+        assert_eq!(reason, StackEndReason::ReachedAnotherAuthor);
     }
 
     #[test]
@@ -225,10 +265,8 @@ mod tests {
         let merge = repo_utils::merge_commit(&repo, &[]);
         let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[&merge], 2);
 
-        assert_stack_matches_chain(
-            2,
-            &working_stack(&repo, None, false, false, &empty_slog()).unwrap(),
-            &commits,
-        );
+        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        assert_stack_matches_chain(2, &stack, &commits);
+        assert_eq!(reason, StackEndReason::ReachedMergeCommit);
     }
 }

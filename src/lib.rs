@@ -453,7 +453,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         }
     }
 
-    if config.and_rebase && !hunks_with_commit.is_empty() {
+    if !hunks_with_commit.is_empty() {
         use std::process::Command;
         // unwrap() is safe here, as we exit early if the stack is empty
         let last_commit_in_stack = &stack.last().unwrap().0;
@@ -461,48 +461,62 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         let number_of_parents = last_commit_in_stack.parents().len();
         assert!(number_of_parents <= 1);
 
-        let mut command = Command::new("git");
-
-        // We'd generally expect to be run from within the repository, but just in case,
-        // try to have git run rebase from the repository root.
-        // This simplifies writing tests that execute from within git-absorb's source directory
-        // but operate on temporary repositories created elsewhere.
-        // (The tests could explicitly change directories, but then must be serialized.)
-        let repo_path = repo.path().parent().and_then(Path::to_str);
-        match repo_path {
-            Some(path) => {
-                command.args(["-C", path]);
-            }
-            _ => {
-                warn!(
-                    logger,
-                    "Could not determine repository path for rebase. Running in current directory."
-                );
-            }
-        }
-
-        command.args(["rebase", "--interactive", "--autosquash", "--autostash"]);
-
-        for arg in config.rebase_options {
-            command.arg(arg);
-        }
-
-        if number_of_parents == 0 {
-            command.arg("--root");
+        let rebase_root = if number_of_parents == 0 {
+            "--root"
         } else {
             // Use a range that is guaranteed to include all the commits we might have
             // committed "fixup!" commits for.
-            let base_commit_sha = last_commit_in_stack.parent(0)?.id().to_string();
-            command.arg(&base_commit_sha);
-        }
+            &*last_commit_in_stack.parent(0)?.id().to_string()
+        };
 
-        if config.dry_run {
-            info!(logger, "would have run git rebase"; "command" => format!("{:?}", command));
-        } else {
-            debug!(logger, "running git rebase"; "command" => format!("{:?}", command));
-            // Don't check that we have successfully absorbed everything, nor git's
-            // exit code -- as git will print helpful messages on its own.
-            command.status().expect("could not run git rebase");
+        let rebase_args = [
+            "rebase",
+            "--interactive",
+            "--autosquash",
+            "--autostash",
+            rebase_root,
+        ];
+
+        if config.and_rebase {
+            let mut command = Command::new("git");
+
+            // We'd generally expect to be run from within the repository, but just in case,
+            // try to have git run rebase from the repository root.
+            // This simplifies writing tests that execute from within git-absorb's source directory
+            // but operate on temporary repositories created elsewhere.
+            // (The tests could explicitly change directories, but then must be serialized.)
+            let repo_path = repo.path().parent().and_then(Path::to_str);
+            match repo_path {
+                Some(path) => {
+                    command.args(["-C", path]);
+                }
+                _ => {
+                    warn!(
+                        logger,
+                        "Could not determine repository path for rebase. \
+                        Running in current directory."
+                    );
+                }
+            }
+
+            command.args(rebase_args);
+
+            for arg in config.rebase_options {
+                command.arg(arg);
+            }
+
+            if config.dry_run {
+                info!(logger, "would have run git rebase"; "command" => format!("{:?}", command));
+            } else {
+                debug!(logger, "running git rebase"; "command" => format!("{:?}", command));
+                // Don't check that we have successfully absorbed everything, nor git's
+                // exit code -- as git will print helpful messages on its own.
+                command.status().expect("could not run git rebase");
+            }
+        } else if !config.dry_run {
+            info!(logger, "To squash the new commits, rebase:";
+                  "command" => format!("git {}", rebase_args.join(" ")),
+            );
         }
     }
 
@@ -654,6 +668,11 @@ mod tests {
             vec![
                 &json!({"level": "INFO", "msg": "committed"}),
                 &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
             ],
         );
     }
@@ -927,10 +946,16 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![&json!({
-                "level": "INFO",
-                "msg": "committed",
-            })],
+            vec![
+                &json!({"level": "INFO", "msg": "committed",}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": format!(
+                        "git rebase --interactive --autosquash --autostash {}",
+                        merge_commit.id()),
+                }),
+            ],
         );
     }
 
@@ -1073,7 +1098,14 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![&json!({"level": "INFO", "msg": "committed"})],
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
         );
     }
 
@@ -1135,6 +1167,11 @@ mod tests {
             vec![
                 &json!({"level": "INFO", "msg": "committed"}),
                 &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
             ],
         );
     }
@@ -1162,6 +1199,11 @@ mod tests {
             vec![
                 &json!({"level": "INFO", "msg": "committed"}),
                 &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
             ],
         );
     }
@@ -1253,6 +1295,11 @@ mod tests {
                 }),
                 &json!({"level": "INFO", "msg": "committed"}),
                 &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
             ],
         );
     }
@@ -1283,6 +1330,11 @@ mod tests {
                 }),
                 &json!({"level": "INFO", "msg": "committed"}),
                 &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
             ],
         );
     }
@@ -1502,7 +1554,14 @@ mod tests {
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
-            vec![&json!({"level": "INFO", "msg": "committed"})],
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
         );
     }
 
@@ -1638,6 +1697,11 @@ mod tests {
             vec![
                 &json!({"level": "INFO", "msg": "committed"}),
                 &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
             ],
         );
     }

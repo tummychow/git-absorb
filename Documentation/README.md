@@ -1,13 +1,18 @@
 git-absorb manual
 =================
 
-This project's man page `git-absorb.1` can be generated from `git-absorb.adoc`
+This project's documentation can be generated from [git-absorb.adoc][] as
+
+* a man page (`git-absorb.1`) and
+* an HTML document (`git-absorb.html`)
+
 by running `make`.
 
 Build dependencies
 ------------------
 
-- [asciidoc][] (tested with version 8.6.10)
+- [asciidoc][] (tested with version 10.2.0)
 - GNU Make
 
-[asciidoc]: http://www.methods.co.nz/asciidoc/
+[asciidoc]: https://asciidoc.org/
+[git-absorb.adoc]: git-absorb.adoc

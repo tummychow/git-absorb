@@ -89,7 +89,7 @@ Note: `cargo install` does not currently know how to install manpages ([cargo#27
 
 `git absorb` works by checking if two patches P1 and P2 *commute*, that is, if applying P1 before P2 gives the same result as applying P2 before P1.
 
-`git absorb` considers a range of commits ending at HEAD. The first commit can be specified explicitly with `--base <ref>`. By default the last 10 commits will be considered (see [Configuration](#configuration) below for how to change this).
+`git absorb` considers a range of commits ending at HEAD. The first commit can be specified explicitly with `--base <ref>`. By default the last 10 commits will be considered (see [STACK SIZE in git-absorb.adoc](Documentation/git-absorb.adoc#stack-size) for how to change this).
 
 For each hunk in the index, `git absorb` will check if that hunk commutes with the last commit, then the one before that, etc. When it finds a commit that does not commute with the hunk, it infers that this is the right parent commit for this change, and the hunk is turned into a fixup commit. If the hunk commutes with all commits in the range, it means we have not found a suitable parent commit for this change; a warning is displayed, and this hunk remains uncommitted in the index. 
 

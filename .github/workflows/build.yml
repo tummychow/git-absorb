@@ -56,3 +56,8 @@ jobs:
         with:
           path: Documentation/git-absorb.1
           name: git-absorb.1
+      - name: Upload HTML docs page as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: Documentation/git-absorb.html
+          name: git-absorb.html

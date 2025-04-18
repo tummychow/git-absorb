@@ -78,6 +78,16 @@ jobs:
         with:
           name: ${{ needs.create-release.outputs.GA_VERSION }}
           files: Documentation/git-absorb.1
+      - name: Upload HTML docs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: Documentation/git-absorb.html
+          name: git-absorb.html
+      - name: Attach HTML docs to release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ needs.create-release.outputs.GA_VERSION }}
+          files: Documentation/git-absorb.html
 
   build-release:
     name: build-release
@@ -155,6 +165,12 @@ jobs:
           name: git-absorb.1
           path: Documentation
 
+      - name: Download HTML docs
+        uses: actions/download-artifact@v4
+        with:
+          name: git-absorb.html
+          path: Documentation
+
       - name: Build archive
         shell: bash
         run: |
@@ -163,7 +179,7 @@ jobs:
           mkdir -p "$staging"/doc
 
           cp {README.md,LICENSE.md} "$staging/"
-          cp Documentation/{git-absorb.1,git-absorb.adoc} "$staging/doc/"
+          cp Documentation/{git-absorb.1,git-absorb.html,git-absorb.adoc} "$staging/doc/"
 
           if [[ "${{ matrix.target }}" =~ .*windows.* ]]; then
             cp "target/${{ matrix.target }}/release/git-absorb.exe" "$staging/"

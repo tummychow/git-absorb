@@ -485,7 +485,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             // This simplifies writing tests that execute from within git-absorb's source directory
             // but operate on temporary repositories created elsewhere.
             // (The tests could explicitly change directories, but then must be serialized.)
-            let repo_path = repo.path().parent().and_then(Path::to_str);
+            let repo_path = repo.workdir().and_then(Path::to_str);
             match repo_path {
                 Some(path) => {
                     command.args(["-C", path]);

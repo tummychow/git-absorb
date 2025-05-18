@@ -49,22 +49,13 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             index.write()?;
 
             if nothing_left_in_index(repo)? {
-                warn!(
-                    logger,
-                    "No changes staged, even after auto-staging. \
-                    Try adding something to the index."
-                );
+                announce(logger, Announcement::NothingStagedAfterAutoStaging);
                 return Ok(());
             }
 
             we_added_everything_to_index = true;
         } else {
-            warn!(
-                logger,
-                "No changes staged. \
-                Try adding something to the index or set {} = true.",
-                config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
-            );
+            announce(logger, Announcement::NothingStaged);
             return Ok(());
         }
     }
@@ -344,14 +335,11 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     &head_tree,
                     &[&head_commit],
                 )?)?;
-                info!(logger, "committed";
-                      "commit" => head_commit.id().to_string(),
-                      "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
-                );
+                announce(logger, Announcement::Committed(&head_commit, &diff));
             } else {
-                info!(logger, "would have committed";
-                      "fixup" => dest_commit_locator,
-                      "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
+                announce(
+                    logger,
+                    Announcement::WouldHaveCommitted(dest_commit_locator, &diff),
                 );
             }
         } else {
@@ -370,11 +358,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     }
 
     if non_modified_patches == index.len() {
-        warn!(
-            logger,
-            "No changes were in-place file modifications. \
-            Added, removed, or renamed files cannot be automatically absorbed."
-        );
+        announce(logger, Announcement::NoFileModifications);
         return Ok(());
     }
 
@@ -384,71 +368,44 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     // Users that auto-stage changes may be accustomed to having untracked files
     // in their workspace that are not absorbed, so don't warn them.
     if non_modified_patches > 0 && !we_added_everything_to_index {
-        warn!(
-            logger,
-            "Some changes were not in-place file modifications. \
-            Added, removed, or renamed files cannot be automatically absorbed."
-        )
+        announce(logger, Announcement::NonFileModifications);
     }
 
     if modified_hunks_without_target > 0 {
-        warn!(
-            logger,
-            "Some file modifications did not have an available commit to fix up. \
-            You will have to manually create fixup commits."
-        );
+        announce(logger, Announcement::FileModificationsWithoutTarget);
 
         match stack_end_reason {
             stack::StackEndReason::ReachedRoot => {
-                warn!(
-                    logger,
-                    "Cannot fix up past first commit in the repository.";
-                );
+                announce(logger, Announcement::CannotFixUpPastFirstCommit);
             }
             stack::StackEndReason::ReachedMergeCommit => {
-                warn!(
-                    logger,
-                    "Cannot fix up past a merge commit";
-                    "commit" => match stack.last() {
-                        Some(commit) => commit.0.id().to_string(),
-                        None => head_commit.id().to_string(),
-                    }
-                );
+                let commit = match stack.last() {
+                    Some(commit) => &commit.0,
+                    None => &head_commit,
+                };
+                announce(logger, Announcement::CannotFixUpPastMerge(commit));
             }
             stack::StackEndReason::ReachedAnotherAuthor => {
-                warn!(
-                    logger,
-                    "Will not fix up past commits by another author. \
-                    Use --force-author to override";
-                    "commit" => match stack.last() {
-                        Some(commit) => commit.0.id().to_string(),
-                        None => head_commit.id().to_string(),
-                    }
-                );
+                let commit = match stack.last() {
+                    Some(commit) => &commit.0,
+                    None => &head_commit,
+                };
+                announce(logger, Announcement::WillNotFixUpPastAnotherAuthor(commit));
             }
             stack::StackEndReason::ReachedLimit => {
-                warn!(
+                announce(
                     logger,
-                    "Will not fix up past maximum stack limit. \
-                    Use --base or configure {} to override",
-                    config::MAX_STACK_CONFIG_NAME;
-                    "limit" => config::max_stack(repo),
+                    Announcement::WillNotFixUpPastStackLimit(config::max_stack(repo)),
                 );
             }
             stack::StackEndReason::CommitsHiddenByBase => {
-                warn!(
-                   logger,
-                   "Will not fix up past specified base commit. \
-                   Consider using --base to specify a different base commit";
-                   "base" => config.base.unwrap(),
+                announce(
+                    logger,
+                    Announcement::CommitsHiddenByBase(config.base.unwrap()),
                 );
             }
             stack::StackEndReason::CommitsHiddenByBranches => {
-                warn!(
-                    logger,
-                    "Will not fix up commits reachable by other branches. \
-                    Use --base to specify a base commit.";
-                );
+                announce(logger, Announcement::CommitsHiddenByBranches);
             }
         }
     }
@@ -491,11 +448,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     command.args(["-C", path]);
                 }
                 _ => {
-                    warn!(
-                        logger,
-                        "Could not determine repository path for rebase. \
-                        Running in current directory."
-                    );
+                    announce(logger, Announcement::CouldNotFindRepositoryPath);
                 }
             }
 
@@ -506,7 +459,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             }
 
             if config.dry_run {
-                info!(logger, "would have run git rebase"; "command" => format!("{:?}", command));
+                announce(logger, Announcement::WouldHaveRebased(&command));
             } else {
                 debug!(logger, "running git rebase"; "command" => format!("{:?}", command));
                 // Don't check that we have successfully absorbed everything, nor git's
@@ -514,9 +467,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 command.status().expect("could not run git rebase");
             }
         } else if !config.dry_run {
-            info!(logger, "To squash the new commits, rebase:";
-                  "command" => format!("git {}", rebase_args.join(" ")),
-            );
+            announce(logger, Announcement::HowToSquash(rebase_args.join(" ")));
         }
     }
 
@@ -615,6 +566,110 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
     let diff = repo.diff_tree_to_index(Some(&head), Some(&repo.index()?), None)?;
     let stats = diff.stats()?;
     Ok(stats)
+}
+
+// Messages that will be shown to users during normal operations (not debug messages).
+enum Announcement<'r> {
+    Committed(&'r git2::Commit<'r>, &'r git2::DiffStats),
+    WouldHaveCommitted(&'r str, &'r git2::DiffStats),
+    WouldHaveRebased(&'r std::process::Command),
+    HowToSquash(String),
+    NothingStagedAfterAutoStaging,
+    NothingStaged,
+    NoFileModifications,
+    NonFileModifications,
+    FileModificationsWithoutTarget,
+    CannotFixUpPastFirstCommit,
+    CannotFixUpPastMerge(&'r git2::Commit<'r>),
+    WillNotFixUpPastAnotherAuthor(&'r git2::Commit<'r>),
+    WillNotFixUpPastStackLimit(usize),
+    CommitsHiddenByBase(&'r str),
+    CommitsHiddenByBranches,
+    CouldNotFindRepositoryPath,
+}
+
+fn announce(logger: &slog::Logger, announcement: Announcement) {
+    match announcement {
+        Announcement::Committed(commit, diff) => info!(
+            logger,
+            "committed";
+            "commit" => &commit.id().to_string(),
+            "header" => format!("+{},-{}", &diff.insertions(), &diff.deletions())
+        ),
+        Announcement::WouldHaveCommitted(fixup, diff) => info!(
+            logger,
+            "would have committed";
+            "fixup" => fixup,
+            "header" => format!("+{},-{}", &diff.insertions(), &diff.deletions())
+        ),
+        Announcement::WouldHaveRebased(command) => info!(
+            logger, "would have run git rebase"; "command" => format!("{:?}", command)
+        ),
+        Announcement::HowToSquash(rebase_args) => info!(
+            logger,
+            "To squash the new commits, rebase:";
+            "command" => format!("git {}", rebase_args),
+        ),
+        Announcement::NothingStagedAfterAutoStaging => warn!(
+            logger,
+            "No changes staged, even after auto-staging. Try adding something to the index.",
+        ),
+        Announcement::NothingStaged => warn!(
+            logger,
+            "No changes staged. Try adding something to the index or set {} = true.",
+            config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME
+        ),
+        Announcement::NoFileModifications => warn!(
+            logger,
+            "No changes were in-place file modifications. \
+                Added, removed, or renamed files cannot be automatically absorbed."
+        ),
+        Announcement::NonFileModifications => warn!(
+            logger,
+            "Some changes were not in-place file modifications. \
+                Added, removed, or renamed files cannot be automatically absorbed."
+        ),
+        Announcement::FileModificationsWithoutTarget => warn!(
+            logger,
+            "Some file modifications did not have an available commit to fix up. \
+                You will have to manually create fixup commits."
+        ),
+        Announcement::CannotFixUpPastFirstCommit => warn!(
+            logger,
+            "Cannot fix up past the first commit in the repository."
+        ),
+        Announcement::CannotFixUpPastMerge(commit) => warn!(
+            logger,
+            "Cannot fix up past a merge commit";
+            "commit" => commit.id().to_string()
+        ),
+        Announcement::WillNotFixUpPastAnotherAuthor(commit) => warn!(
+            logger,
+            "Will not fix up past commits by another author. Use --force-author to override";
+            "commit" => commit.id().to_string()
+        ),
+        Announcement::WillNotFixUpPastStackLimit(max_stack_limit) => warn!(
+            logger,
+            "Will not fix up past maximum stack limit. Use --base or configure {} to override",
+            config::MAX_STACK_CONFIG_NAME;
+            "limit" => max_stack_limit,
+        ),
+        Announcement::CommitsHiddenByBase(base) => warn!(
+            logger,
+            "Will not fix up past specified base commit. \
+            Consider using --base to specify a different base commit";
+            "base" => base,
+        ),
+        Announcement::CommitsHiddenByBranches => warn!(
+            logger,
+            "Will not fix up commits reachable by other branches. \
+                Use --base to specify a base commit."
+        ),
+        Announcement::CouldNotFindRepositoryPath => warn!(
+            logger,
+            "Could not determine repository path for rebase. Running in current directory."
+        ),
+    }
 }
 
 #[cfg(test)]

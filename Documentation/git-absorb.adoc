@@ -98,7 +98,7 @@ OPTIONS
         Generate completions
         [possible values: bash, fish, nushell, zsh, powershell, elvish]
 
--- <REBASE_OPTIONS>::
+\-- <REBASE_OPTIONS>::
         Options to pass to git rebase after generating commits.
         Must be the last arguments and the `--` must be present.
         Only valid when `--and-rebase` is used.

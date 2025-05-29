@@ -66,6 +66,14 @@ FLAGS
         Skip all safety checks as if all --force-* flags were given.
         See those flags to understand the full effect of supplying --force.
 
+-s::
+--squash::
+        Create squash commits instead of fixup commits.
+        +
+        When this flag is used, "fixup commit" may be read as "squash commit"
+        throughout the documentation. All configuration relating to fixup
+        commits will apply to the squash commits instead.
+
 -w::
 --whole-file::
         Match the first commit touching the same file as the current hunk.

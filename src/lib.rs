@@ -19,6 +19,7 @@ pub struct Config<'a> {
     pub rebase_options: &'a Vec<&'a str>,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
+    pub squash: bool,
     pub message: Option<&'a str>,
 }
 
@@ -321,7 +322,8 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 .stats()?;
             if !config.dry_run {
                 head_tree = new_head_tree;
-                let mut message = format!("fixup! {}\n", dest_commit_locator);
+                let verb = if config.squash { "squash" } else { "fixup" };
+                let mut message = format!("{}! {}\n", verb, dest_commit_locator);
                 if let Some(m) = config.message.filter(|m| !m.is_empty()) {
                     message.push('\n');
                     message.push_str(m);
@@ -1505,6 +1507,41 @@ mod tests {
     }
 
     #[test]
+    fn squash_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            squash: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "squash! Initial commit.\n",
+                "squash! Initial commit.\n",
+                "Initial commit.",
+            ]
+        );
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
     fn dry_run_flag() {
         let ctx = repo_utils::prepare_and_stage();
 
@@ -1849,6 +1886,7 @@ mod tests {
         rebase_options: &Vec::new(),
         whole_file: false,
         one_fixup_per_commit: false,
+        squash: false,
         message: None,
     };
 }

@@ -220,6 +220,22 @@ edit your local or global `.gitconfig` and add the following section:
     forceDetach = true
 .............................................................................
 
+GENERATE SQUASH COMMITS INSTEAD OF FIXUPS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will generate fixup commits.
+To instead generate squash commits, edit your local or global `.gitconfig`
+and add the following section:
+
+.............................................................................
+[absorb]
+    createSquashCommits = true
+.............................................................................
+
+When this option is set, "fixup commit" may be read as "squash commit"
+throughout the documentation. All configuration relating to fixup
+commits will apply to the squash commits instead.
+
 GITHUB PROJECT
 --------------
 

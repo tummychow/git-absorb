@@ -1542,6 +1542,39 @@ mod tests {
     }
 
     #[test]
+    fn run_with_squash_config_option() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        repo_utils::set_config_flag(&ctx.repo, "absorb.createSquashCommits");
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "squash! Initial commit.\n",
+                "squash! Initial commit.\n",
+                "Initial commit.",
+            ]
+        );
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
     fn dry_run_flag() {
         let ctx = repo_utils::prepare_and_stage();
 

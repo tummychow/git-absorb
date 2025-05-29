@@ -718,6 +718,15 @@ mod tests {
         let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
         assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
 
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "fixup! Initial commit.\n",
+                "fixup! Initial commit.\n",
+                "Initial commit.",
+            ]
+        );
+
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
@@ -1812,6 +1821,23 @@ mod tests {
         let expected_msg = fixed_up_commit.message().unwrap();
         let expected_msg = format!("fixup! {}\n\n{}\n", expected_msg, fixup_message_body);
         assert_eq!(actual_msg, expected_msg);
+    }
+
+    /// Perform a revwalk from HEAD, extracting the commit messages.
+    fn extract_commit_messages(repo: &git2::Repository) -> Vec<String> {
+        let mut revwalk = repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        let mut messages = Vec::new();
+
+        for oid in revwalk {
+            let commit = repo.find_commit(oid.unwrap()).unwrap();
+            if let Some(message) = commit.message() {
+                messages.push(message.to_string());
+            }
+        }
+
+        messages
     }
 
     const DEFAULT_CONFIG: Config = Config {

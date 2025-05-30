@@ -19,6 +19,7 @@ pub struct Config<'a> {
     pub rebase_options: &'a Vec<&'a str>,
     pub whole_file: bool,
     pub one_fixup_per_commit: bool,
+    pub squash: bool,
     pub message: Option<&'a str>,
 }
 
@@ -321,7 +322,8 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 .stats()?;
             if !config.dry_run {
                 head_tree = new_head_tree;
-                let mut message = format!("fixup! {}\n", dest_commit_locator);
+                let verb = if config.squash { "squash" } else { "fixup" };
+                let mut message = format!("{}! {}\n", verb, dest_commit_locator);
                 if let Some(m) = config.message.filter(|m| !m.is_empty()) {
                     message.push('\n');
                     message.push_str(m);
@@ -717,6 +719,15 @@ mod tests {
 
         let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
         assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "fixup! Initial commit.\n",
+                "fixup! Initial commit.\n",
+                "Initial commit.",
+            ]
+        );
 
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
@@ -1496,6 +1507,74 @@ mod tests {
     }
 
     #[test]
+    fn squash_flag() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            squash: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "squash! Initial commit.\n",
+                "squash! Initial commit.\n",
+                "Initial commit.",
+            ]
+        );
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn run_with_squash_config_option() {
+        let ctx = repo_utils::prepare_and_stage();
+
+        repo_utils::set_config_flag(&ctx.repo, "absorb.createSquashCommits");
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "squash! Initial commit.\n",
+                "squash! Initial commit.\n",
+                "Initial commit.",
+            ]
+        );
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
     fn dry_run_flag() {
         let ctx = repo_utils::prepare_and_stage();
 
@@ -1814,6 +1893,23 @@ mod tests {
         assert_eq!(actual_msg, expected_msg);
     }
 
+    /// Perform a revwalk from HEAD, extracting the commit messages.
+    fn extract_commit_messages(repo: &git2::Repository) -> Vec<String> {
+        let mut revwalk = repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        let mut messages = Vec::new();
+
+        for oid in revwalk {
+            let commit = repo.find_commit(oid.unwrap()).unwrap();
+            if let Some(message) = commit.message() {
+                messages.push(message.to_string());
+            }
+        }
+
+        messages
+    }
+
     const DEFAULT_CONFIG: Config = Config {
         dry_run: false,
         force_author: false,
@@ -1823,6 +1919,7 @@ mod tests {
         rebase_options: &Vec::new(),
         whole_file: false,
         one_fixup_per_commit: false,
+        squash: false,
         message: None,
     };
 }

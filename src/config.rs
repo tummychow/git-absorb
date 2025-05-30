@@ -19,6 +19,9 @@ pub const AUTO_STAGE_IF_NOTHING_STAGED_DEFAULT: bool = false;
 pub const FIXUP_TARGET_ALWAYS_SHA_CONFIG_NAME: &str = "absorb.fixupTargetAlwaysSHA";
 pub const FIXUP_TARGET_ALWAYS_SHA_DEFAULT: bool = false;
 
+pub const CREATE_SQUASH_COMMITS_CONFIG_NAME: &str = "absorb.createSquashCommits";
+pub const CREATE_SQUASH_COMMITS_DEFAULT: bool = false;
+
 pub fn unify<'config>(config: &'config Config, repo: &Repository) -> Config<'config> {
     Config {
         // here, we default to the git config value,
@@ -35,6 +38,12 @@ pub fn unify<'config>(config: &'config Config, repo: &Repository) -> Config<'con
                 repo,
                 ONE_FIXUP_PER_COMMIT_CONFIG_NAME,
                 ONE_FIXUP_PER_COMMIT_DEFAULT,
+            ),
+        squash: config.squash
+            || bool_value(
+                repo,
+                CREATE_SQUASH_COMMITS_CONFIG_NAME,
+                CREATE_SQUASH_COMMITS_DEFAULT,
             ),
         force_author: config.force_author
             || bool_value(repo, FORCE_AUTHOR_CONFIG_NAME, FORCE_AUTHOR_DEFAULT),

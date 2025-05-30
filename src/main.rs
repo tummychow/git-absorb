@@ -44,6 +44,9 @@ struct Cli {
     /// Only generate one fixup per commit
     #[clap(long, short = 'F')]
     one_fixup_per_commit: bool,
+    /// Create squash commits instead of fixup
+    #[clap(long, short = 's')]
+    squash: bool,
     /// Commit message body that is given to all fixup commits
     #[clap(long, short)]
     message: Option<String>,
@@ -62,6 +65,7 @@ fn main() {
         gen_completions,
         whole_file,
         one_fixup_per_commit,
+        squash,
         message,
     } = Cli::parse();
 
@@ -113,6 +117,7 @@ fn main() {
             rebase_options: &rebase_options,
             whole_file,
             one_fixup_per_commit,
+            squash,
             message: message.as_deref(),
         },
     ) {

@@ -66,6 +66,14 @@ FLAGS
         Skip all safety checks as if all --force-* flags were given.
         See those flags to understand the full effect of supplying --force.
 
+-s::
+--squash::
+        Create squash commits instead of fixup commits.
+        +
+        When this flag is used, "fixup commit" may be read as "squash commit"
+        throughout the documentation. All configuration relating to fixup
+        commits will apply to the squash commits instead.
+
 -w::
 --whole-file::
         Match the first commit touching the same file as the current hunk.
@@ -98,7 +106,7 @@ OPTIONS
         Generate completions
         [possible values: bash, fish, nushell, zsh, powershell, elvish]
 
--- <REBASE_OPTIONS>::
+\-- <REBASE_OPTIONS>::
         Options to pass to git rebase after generating commits.
         Must be the last arguments and the `--` must be present.
         Only valid when `--and-rebase` is used.
@@ -211,6 +219,22 @@ edit your local or global `.gitconfig` and add the following section:
 [absorb]
     forceDetach = true
 .............................................................................
+
+GENERATE SQUASH COMMITS INSTEAD OF FIXUPS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, git-absorb will generate fixup commits.
+To instead generate squash commits, edit your local or global `.gitconfig`
+and add the following section:
+
+.............................................................................
+[absorb]
+    createSquashCommits = true
+.............................................................................
+
+When this option is set, "fixup commit" may be read as "squash commit"
+throughout the documentation. All configuration relating to fixup
+commits will apply to the squash commits instead.
 
 GITHUB PROJECT
 --------------

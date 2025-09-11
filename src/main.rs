@@ -4,8 +4,10 @@ extern crate slog;
 use clap::{CommandFactory, Parser as _};
 use clap_complete::{generate, Shell};
 use clap_complete_nushell::Nushell;
-use slog::Drain;
+use slog::{Drain, Record};
+use slog_term::{CountingWriter, RecordDecorator, ThreadSafeTimestampFn};
 use std::io;
+use std::io::Write;
 
 /// Automatically absorb staged changes into your current branch
 #[derive(Debug, clap::Parser)]
@@ -85,7 +87,10 @@ fn main() {
     }
 
     let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_term::FullFormat::new(decorator)
+        .use_custom_header_print(print_msg_header)
+        .build()
+        .fuse();
     let drain = std::sync::Mutex::new(drain).fuse();
 
     let drain = slog::LevelFilter::new(
@@ -126,4 +131,16 @@ fn main() {
         drop(logger);
         ::std::process::exit(1);
     }
+}
+
+pub fn print_msg_header(
+    _fn_timestamp: &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
+    mut rd: &mut dyn RecordDecorator,
+    record: &Record,
+    _use_file_location: bool,
+) -> io::Result<bool> {
+    rd.start_level()?; // color-codes the message
+    let mut count_rd = CountingWriter::new(&mut rd);
+    write!(count_rd, "{}", record.msg())?;
+    Ok(count_rd.count() != 0)
 }

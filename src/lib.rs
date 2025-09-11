@@ -689,6 +689,7 @@ mod tests {
     use git2::message_trailers_strs;
     use serde_json::json;
     use std::path::PathBuf;
+    use tests::repo_utils::add;
 
     use super::*;
     mod log_utils;
@@ -744,6 +745,101 @@ mod tests {
             vec![
                 &json!({"level": "INFO", "msg": "committed", "fixup": "Initial commit."}),
                 &json!({"level": "INFO", "msg": "committed", "fixup": "Initial commit."}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn one_deletion() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        std::fs::write(
+            ctx.join(&file_path),
+            br#"
+line
+line
+"#,
+        )
+        .unwrap();
+        add(&ctx.repo, &file_path);
+
+        let actual_pre_absorb_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap().id();
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
+        assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "+0,-3",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn one_insertion_and_one_deletion() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        std::fs::write(
+            ctx.join(&file_path),
+            br#"
+line
+line
+
+even more
+lines
+"#,
+        )
+        .unwrap();
+        add(&ctx.repo, &file_path);
+
+        let actual_pre_absorb_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap().id();
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
+        assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "+1,-1",
+                }),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -1175,7 +1271,12 @@ mod tests {
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
-                &json!({"level": "INFO", "msg": "committed","fixup": "Initial commit.",}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "+3,-0",
+                }),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -1610,11 +1711,11 @@ mod tests {
             vec![
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit."
+                    "msg": "would have committed", "fixup": "Initial commit.", "header": "+1,-0"
                 }),
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit."
+                    "msg": "would have committed", "fixup": "Initial commit.", "header": "+2,-0"
                 }),
             ],
         );

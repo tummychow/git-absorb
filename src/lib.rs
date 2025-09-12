@@ -7,6 +7,7 @@ mod config;
 mod owned;
 mod stack;
 
+use git2::DiffStats;
 use std::io::Write;
 use std::path::Path;
 
@@ -600,19 +601,21 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
             let commit_short_id = commit_short_id
                 .as_str()
                 .expect("the commit short id is always a valid ASCII string");
+            let change_header = format_change_header(diff);
+
             info!(
                 logger,
                 "committed";
                 "fixup" => destination,
                 "commit" => commit_short_id,
-                "header" => format!("+{},-{}", diff.insertions(), diff.deletions()),
+                "header" => change_header,
             );
         }
         Announcement::WouldHaveCommitted(fixup, diff) => info!(
             logger,
             "would have committed";
             "fixup" => fixup,
-            "header" => format!("+{},-{}", &diff.insertions(), &diff.deletions())
+            "header" => format_change_header(diff),
         ),
         Announcement::WouldHaveRebased(command) => info!(
             logger, "would have run git rebase"; "command" => format!("{:?}", command)
@@ -684,6 +687,39 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
     }
 }
 
+fn format_change_header(diff: &DiffStats) -> String {
+    let insertions = diff.insertions();
+    let deletions = diff.deletions();
+
+    let mut header = String::new();
+    if insertions > 0 {
+        header.push_str(&format!(
+            "{} {}(+)",
+            insertions,
+            if insertions == 1 {
+                "insertion"
+            } else {
+                "insertions"
+            }
+        ));
+    }
+    if deletions > 0 {
+        if !header.is_empty() {
+            header.push_str(", ");
+        }
+        header.push_str(&format!(
+            "{} {}(-)",
+            deletions,
+            if deletions == 1 {
+                "deletion"
+            } else {
+                "deletions"
+            }
+        ));
+    }
+    header
+}
+
 #[cfg(test)]
 mod tests {
     use git2::message_trailers_strs;
@@ -743,8 +779,18 @@ mod tests {
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
-                &json!({"level": "INFO", "msg": "committed", "fixup": "Initial commit."}),
-                &json!({"level": "INFO", "msg": "committed", "fixup": "Initial commit."}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "1 insertion(+)",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "2 insertions(+)",
+                }),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -789,7 +835,7 @@ line
                     "level": "INFO",
                     "msg": "committed",
                     "fixup": "Initial commit.",
-                    "header": "+0,-3",
+                    "header": "3 deletions(-)",
                 }),
                 &json!({
                     "level": "INFO",
@@ -838,7 +884,7 @@ lines
                     "level": "INFO",
                     "msg": "committed",
                     "fixup": "Initial commit.",
-                    "header": "+1,-1",
+                    "header": "1 insertion(+), 1 deletion(-)",
                 }),
                 &json!({
                     "level": "INFO",
@@ -1275,7 +1321,7 @@ lines
                     "level": "INFO",
                     "msg": "committed",
                     "fixup": "Initial commit.",
-                    "header": "+3,-0",
+                    "header": "3 insertions(+)",
                 }),
                 &json!({
                     "level": "INFO",
@@ -1711,11 +1757,15 @@ lines
             vec![
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit.", "header": "+1,-0"
+                    "msg": "would have committed",
+                    "fixup": "Initial commit.",
+                    "header": "1 insertion(+)",
                 }),
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit.", "header": "+2,-0"
+                    "msg": "would have committed",
+                    "fixup": "Initial commit.",
+                    "header": "2 insertions(+)",
                 }),
             ],
         );

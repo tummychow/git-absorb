@@ -7,6 +7,7 @@ mod config;
 mod owned;
 mod stack;
 
+use git2::DiffStats;
 use std::io::Write;
 use std::path::Path;
 
@@ -337,7 +338,10 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     &head_tree,
                     &[&head_commit],
                 )?)?;
-                announce(logger, Announcement::Committed(&head_commit, &diff));
+                announce(
+                    logger,
+                    Announcement::Committed(&head_commit, dest_commit_locator, &diff),
+                );
             } else {
                 announce(
                     logger,
@@ -572,7 +576,7 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
 
 // Messages that will be shown to users during normal operations (not debug messages).
 enum Announcement<'r> {
-    Committed(&'r git2::Commit<'r>, &'r git2::DiffStats),
+    Committed(&'r git2::Commit<'r>, &'r str, &'r git2::DiffStats),
     WouldHaveCommitted(&'r str, &'r git2::DiffStats),
     WouldHaveRebased(&'r std::process::Command),
     HowToSquash(String),
@@ -592,17 +596,26 @@ enum Announcement<'r> {
 
 fn announce(logger: &slog::Logger, announcement: Announcement) {
     match announcement {
-        Announcement::Committed(commit, diff) => info!(
-            logger,
-            "committed";
-            "commit" => &commit.id().to_string(),
-            "header" => format!("+{},-{}", &diff.insertions(), &diff.deletions())
-        ),
+        Announcement::Committed(commit, destination, diff) => {
+            let commit_short_id = commit.as_object().short_id().unwrap();
+            let commit_short_id = commit_short_id
+                .as_str()
+                .expect("the commit short id is always a valid ASCII string");
+            let change_header = format_change_header(diff);
+
+            info!(
+                logger,
+                "committed";
+                "fixup" => destination,
+                "commit" => commit_short_id,
+                "header" => change_header,
+            );
+        }
         Announcement::WouldHaveCommitted(fixup, diff) => info!(
             logger,
             "would have committed";
             "fixup" => fixup,
-            "header" => format!("+{},-{}", &diff.insertions(), &diff.deletions())
+            "header" => format_change_header(diff),
         ),
         Announcement::WouldHaveRebased(command) => info!(
             logger, "would have run git rebase"; "command" => format!("{:?}", command)
@@ -674,11 +687,45 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
     }
 }
 
+fn format_change_header(diff: &DiffStats) -> String {
+    let insertions = diff.insertions();
+    let deletions = diff.deletions();
+
+    let mut header = String::new();
+    if insertions > 0 {
+        header.push_str(&format!(
+            "{} {}(+)",
+            insertions,
+            if insertions == 1 {
+                "insertion"
+            } else {
+                "insertions"
+            }
+        ));
+    }
+    if deletions > 0 {
+        if !header.is_empty() {
+            header.push_str(", ");
+        }
+        header.push_str(&format!(
+            "{} {}(-)",
+            deletions,
+            if deletions == 1 {
+                "deletion"
+            } else {
+                "deletions"
+            }
+        ));
+    }
+    header
+}
+
 #[cfg(test)]
 mod tests {
     use git2::message_trailers_strs;
     use serde_json::json;
     use std::path::PathBuf;
+    use tests::repo_utils::add;
 
     use super::*;
     mod log_utils;
@@ -732,8 +779,113 @@ mod tests {
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
-                &json!({"level": "INFO", "msg": "committed"}),
-                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "1 insertion(+)",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "2 insertions(+)",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn one_deletion() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        std::fs::write(
+            ctx.join(&file_path),
+            br#"
+line
+line
+"#,
+        )
+        .unwrap();
+        add(&ctx.repo, &file_path);
+
+        let actual_pre_absorb_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap().id();
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
+        assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "3 deletions(-)",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                    "command": "git rebase --interactive --autosquash --autostash --root",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn one_insertion_and_one_deletion() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        std::fs::write(
+            ctx.join(&file_path),
+            br#"
+line
+line
+
+even more
+lines
+"#,
+        )
+        .unwrap();
+        add(&ctx.repo, &file_path);
+
+        let actual_pre_absorb_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap().id();
+
+        // run 'git-absorb'
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 2);
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let pre_absorb_ref_commit = ctx.repo.refname_to_id("PRE_ABSORB_HEAD").unwrap();
+        assert_eq!(pre_absorb_ref_commit, actual_pre_absorb_commit);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "1 insertion(+), 1 deletion(-)",
+                }),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -1165,7 +1317,12 @@ mod tests {
         log_utils::assert_log_messages_are(
             capturing_logger.visible_logs(),
             vec![
-                &json!({"level": "INFO", "msg": "committed"}),
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                    "header": "3 insertions(+)",
+                }),
                 &json!({
                     "level": "INFO",
                     "msg": "To squash the new commits, rebase:",
@@ -1600,11 +1757,15 @@ mod tests {
             vec![
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit.",
+                    "msg": "would have committed",
+                    "fixup": "Initial commit.",
+                    "header": "1 insertion(+)",
                 }),
                 &json!({
                     "level": "INFO",
-                    "msg": "would have committed", "fixup": "Initial commit.",
+                    "msg": "would have committed",
+                    "fixup": "Initial commit.",
+                    "header": "2 insertions(+)",
                 }),
             ],
         );

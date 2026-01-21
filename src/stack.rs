@@ -16,6 +16,7 @@ pub enum StackEndReason {
 
 pub fn working_stack<'repo>(
     repo: &'repo git2::Repository,
+    no_limit: bool,
     user_provided_base: Option<&str>,
     force_author: bool,
     force_detach: bool,
@@ -88,7 +89,7 @@ pub fn working_stack<'repo>(
             break;
         }
 
-        if ret.len() == config::max_stack(repo) && user_provided_base.is_none() {
+        if !no_limit && ret.len() == config::max_stack(repo) && user_provided_base.is_none() {
             debug!(logger, "Stopping at stack limit.";
                   "limit" => ret.len());
             stack_end_reason = Some(StackEndReason::ReachedLimit);
@@ -203,7 +204,8 @@ mod tests {
         let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[], 2);
         repo.branch("hide", &commits[0], false).unwrap();
 
-        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        let (stack, reason) =
+            working_stack(&repo, false, None, false, false, &empty_slog()).unwrap();
         assert_stack_matches_chain(1, &stack, &commits);
         assert_eq!(reason, StackEndReason::CommitsHiddenByBranches);
     }
@@ -216,6 +218,7 @@ mod tests {
 
         let (stack, reason) = working_stack(
             &repo,
+            false,
             Some(&commits[0].id().to_string()),
             false,
             false,
@@ -238,7 +241,8 @@ mod tests {
             )
             .unwrap();
 
-        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        let (stack, reason) =
+            working_stack(&repo, false, None, false, false, &empty_slog()).unwrap();
         assert_stack_matches_chain(config::MAX_STACK + 1, &stack, &commits);
         assert_eq!(reason, StackEndReason::ReachedLimit);
     }
@@ -254,7 +258,8 @@ mod tests {
         let new_commits =
             repo_utils::empty_commit_chain(&repo, "HEAD", &[old_commits.last().unwrap()], 2);
 
-        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        let (stack, reason) =
+            working_stack(&repo, false, None, false, false, &empty_slog()).unwrap();
         assert_stack_matches_chain(2, &stack, &new_commits);
         assert_eq!(reason, StackEndReason::ReachedAnotherAuthor);
     }
@@ -265,7 +270,8 @@ mod tests {
         let merge = repo_utils::merge_commit(&repo, &[]);
         let commits = repo_utils::empty_commit_chain(&repo, "HEAD", &[&merge], 2);
 
-        let (stack, reason) = working_stack(&repo, None, false, false, &empty_slog()).unwrap();
+        let (stack, reason) =
+            working_stack(&repo, false, None, false, false, &empty_slog()).unwrap();
         assert_stack_matches_chain(2, &stack, &commits);
         assert_eq!(reason, StackEndReason::ReachedMergeCommit);
     }

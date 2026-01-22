@@ -10,20 +10,34 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macOS-latest]
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: git-absorb.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: git-absorb
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact_name: git-absorb
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: git-absorb
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --release --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: git-absorb-${{ matrix.os }}
-        path: |
-          target/release/git-absorb
-          target/release/git-absorb.exe
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --verbose --target ${{ matrix.target }}
+      - name: Run tests
+        run: cargo test --verbose --target ${{ matrix.target }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-absorb-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
   check-format:
     runs-on: ubuntu-latest

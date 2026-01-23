@@ -51,6 +51,15 @@ FLAGS
 --dry-run::
         Don't make any actual changes
 
+--no-limit::
+        Remove absorb stack limit. Has no effect when used with `--base`
+        +
+        This will consider all commits until
+        either root, merge commit, or a commit by other author
+        (unless `--force-author` is used)
+        +
+        Which is why you should be careful when using this flag.
+
 --force-author::
         Generate fixups to commits not made by you
 
@@ -152,6 +161,8 @@ edit your local or global `.gitconfig` and add the following section:
 [absorb]
     maxStack=50 # Or any other reasonable value for your project
 .............................................................................
+
+Stack size can also be disabled temporarily for one command (see `--no-limit`)
 
 ONE FIXUP PER FIXABLE COMMIT
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

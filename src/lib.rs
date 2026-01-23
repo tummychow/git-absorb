@@ -13,6 +13,7 @@ use std::path::Path;
 
 pub struct Config<'a> {
     pub dry_run: bool,
+    pub no_limit: bool,
     pub force_author: bool,
     pub force_detach: bool,
     pub base: Option<&'a str>,
@@ -64,6 +65,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
 
     let (stack, stack_end_reason) = stack::working_stack(
         repo,
+        config.no_limit,
         config.base,
         config.force_author,
         config.force_detach,
@@ -1029,6 +1031,38 @@ lines
                 }),
             ],
         );
+    }
+
+    #[test]
+    fn no_stack_limit_exceeds_stack_limit() {
+        let (ctx, initial_fp) = repo_utils::prepare_repo();
+        let parent_commit = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+        repo_utils::empty_commit_chain(&ctx.repo, "HEAD", &[&parent_commit], config::MAX_STACK);
+
+        repo_utils::stage_file_changes(&ctx, &initial_fp);
+
+        let config = Config {
+            no_limit: true,
+            // to have a predictable number of commits for unit test
+            one_fixup_per_commit: true,
+            ..DEFAULT_CONFIG
+        };
+
+        // run 'git-absorb'
+        let capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+
+        assert_eq!(
+            revwalk.count(),
+            // initial + 10 empty + fixup
+            config::MAX_STACK + 2,
+            "Wrong number of commits."
+        );
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
     #[test]
@@ -2073,6 +2107,7 @@ lines
 
     const DEFAULT_CONFIG: Config = Config {
         dry_run: false,
+        no_limit: false,
         force_author: false,
         force_detach: false,
         base: None,

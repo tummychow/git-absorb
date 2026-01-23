@@ -19,6 +19,9 @@ struct Cli {
     /// Don't make any actual changes
     #[clap(long, short = 'n')]
     dry_run: bool,
+    /// Remove absorb stack limit. Be careful with this
+    #[clap(long)]
+    no_limit: bool,
     /// Generate fixups to commits not made by you
     #[clap(long)]
     force_author: bool,
@@ -58,6 +61,7 @@ fn main() {
     let Cli {
         base,
         dry_run,
+        no_limit,
         force_author,
         force_detach,
         force,
@@ -120,6 +124,7 @@ fn main() {
             base: base.as_deref(),
             and_rebase,
             rebase_options: &rebase_options,
+            no_limit,
             whole_file,
             one_fixup_per_commit,
             squash,

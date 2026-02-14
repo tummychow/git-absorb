@@ -32,7 +32,7 @@ default-features = false
 clap = { version = "4", features = ["cargo", "wrap_help", "derive"] }
 clap_complete = "4"
 clap_complete_nushell = "4"
-slog = "2.5"
+slog = { version = "2.5", features = ["max_level_debug"] }
 slog-term = "2.6"
 memchr = "2.3"
 anyhow = "1.0"

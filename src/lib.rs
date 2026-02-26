@@ -23,6 +23,7 @@ pub struct Config<'a> {
     pub one_fixup_per_commit: bool,
     pub squash: bool,
     pub message: Option<&'a str>,
+    pub verbose: bool,
 }
 
 pub fn run(logger: &slog::Logger, config: &Config) -> Result<()> {
@@ -347,7 +348,15 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             } else {
                 announce(
                     logger,
-                    Announcement::WouldHaveCommitted(dest_commit_locator, &diff),
+                    Announcement::WouldHaveCommitted {
+                        commit: if config.verbose {
+                            &dest_commit_id
+                        } else {
+                            &dest_commit_id[..7]
+                        },
+                        fixup: dest_commit_locator,
+                        stats: &diff,
+                    },
                 );
             }
         } else {
@@ -579,7 +588,11 @@ fn index_stats(repo: &git2::Repository) -> Result<git2::DiffStats> {
 // Messages that will be shown to users during normal operations (not debug messages).
 enum Announcement<'r> {
     Committed(&'r git2::Commit<'r>, &'r str, &'r git2::DiffStats),
-    WouldHaveCommitted(&'r str, &'r git2::DiffStats),
+    WouldHaveCommitted {
+        commit: &'r str,
+        fixup: &'r str,
+        stats: &'r git2::DiffStats,
+    },
     WouldHaveRebased(&'r std::process::Command),
     HowToSquash(String),
     NothingStagedAfterAutoStaging,
@@ -613,11 +626,16 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
                 "header" => change_header,
             );
         }
-        Announcement::WouldHaveCommitted(fixup, diff) => info!(
+        Announcement::WouldHaveCommitted {
+            commit,
+            fixup,
+            stats,
+        } => info!(
             logger,
             "would have committed";
             "fixup" => fixup,
-            "header" => format_change_header(diff),
+            "commit" => commit,
+            "header" => format_change_header(stats),
         ),
         Announcement::WouldHaveRebased(command) => info!(
             logger, "would have run git rebase"; "command" => format!("{:?}", command)

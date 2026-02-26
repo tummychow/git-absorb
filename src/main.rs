@@ -129,6 +129,7 @@ fn main() {
             one_fixup_per_commit,
             squash,
             message: message.as_deref(),
+            verbose,
         },
     ) {
         crit!(logger, "absorb failed"; "err" => e.to_string());

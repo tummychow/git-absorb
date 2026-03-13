@@ -11,9 +11,11 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 include = [
-    "**/*.rs",
+    "*.rs",
+    "/*.md",
     "Cargo.*",
-    "*.md",
+    "Documentation/Makefile",
+    "Documentation/git-absorb.adoc"
 ]
 rust-version = "1.74.1"
 

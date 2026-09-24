@@ -182,3 +182,21 @@ pub fn commit<'repo>(
     )
     .unwrap()
 }
+
+/// Stage `entry`, replacing any entry at the same path.
+pub fn stage_entry<'r>(repo: &'r git2::Repository, entry: &git2::IndexEntry) -> Tree<'r> {
+    let mut index = repo.index().unwrap();
+    index.add(entry).unwrap();
+    index.write().unwrap();
+
+    let tree_id = index.write_tree_to(repo).unwrap();
+    repo.find_tree(tree_id).unwrap()
+}
+
+/// Commit the current index on top of HEAD.
+pub fn commit_index<'r>(repo: &'r git2::Repository, message: &str) -> git2::Commit<'r> {
+    let tree_id = repo.index().unwrap().write_tree_to(repo).unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
+    commit(repo, "HEAD", message, &tree, &[&head_commit])
+}

@@ -72,14 +72,13 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         logger,
     )?;
 
-    let mut diff_options = Some({
-        let mut ret = git2::DiffOptions::new();
-        ret.context_lines(0)
-            .id_abbrev(40)
-            .ignore_filemode(true)
-            .ignore_submodules(true);
-        ret
-    });
+    let mut diff_options = git2::DiffOptions::new();
+    diff_options
+        .context_lines(0)
+        .id_abbrev(40)
+        .ignore_filemode(true)
+        .ignore_submodules(true)
+        .include_typechange(true);
 
     let (stack, summary_counts): (Vec<_>, _) = {
         let mut diffs = Vec::with_capacity(stack.len());
@@ -93,7 +92,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     }
                     .as_ref(),
                     Some(&commit.tree()?),
-                    diff_options.as_mut(),
+                    Some(&mut diff_options),
                 )?,
             )?;
             trace!(logger, "parsed commit diff";
@@ -107,11 +106,19 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         (stack.into_iter().zip(diffs).collect(), summary_counts)
     };
 
+    // unlike the stack diffs, keep file mode changes
+    let mut index_diff_options = git2::DiffOptions::new();
+    index_diff_options
+        .context_lines(0)
+        .id_abbrev(40)
+        .ignore_submodules(true)
+        .include_typechange(true);
+
     let mut head_tree = repo.head()?.peel_to_tree()?;
     let index = owned::Diff::new(&repo.diff_tree_to_index(
         Some(&head_tree),
         None,
-        diff_options.as_mut(),
+        Some(&mut index_diff_options),
     )?)?;
     trace!(logger, "parsed index";
            "index" => format!("{:?}", index),
@@ -126,14 +133,28 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
 
     let mut modified_hunks_without_target = 0usize;
     let mut non_modified_patches = 0usize;
+    let mut not_absorbed = vec![];
     'patch: for index_patch in index.iter() {
         let old_path = index_patch.new_path.as_slice();
+        if index_patch.status == git2::Delta::Typechange {
+            not_absorbed.push((old_path, NotAbsorbedReason::TypeChange));
+            continue 'patch;
+        }
         if index_patch.status != git2::Delta::Modified {
             debug!(logger, "skipped non-modified patch";
                     "path" => String::from_utf8_lossy(old_path).into_owned(),
                     "status" => format!("{:?}", index_patch.status),
             );
             non_modified_patches += 1;
+            continue 'patch;
+        }
+
+        if index_patch.old_mode != index_patch.new_mode {
+            // any content hunks are still absorbed; the mode change stays staged
+            not_absorbed.push((old_path, NotAbsorbedReason::ModeChange));
+        }
+        if index_patch.binary && index_patch.old_id != index_patch.new_id {
+            not_absorbed.push((old_path, NotAbsorbedReason::Binary));
             continue 'patch;
         }
 
@@ -226,7 +247,9 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     break 'commit;
                 }
 
-                if next_patch.status == git2::Delta::Added {
+                if next_patch.status == git2::Delta::Added
+                    || next_patch.status == git2::Delta::Typechange
+                {
                     debug!(c_logger, "found noncommutative commit by add");
                     dest_commit = Some(commit);
                     break 'commit;
@@ -377,6 +400,10 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     // in their workspace that are not absorbed, so don't warn them.
     if non_modified_patches > 0 && !we_added_everything_to_index {
         announce(logger, Announcement::NonFileModifications);
+    }
+
+    for (path, reason) in not_absorbed {
+        announce(logger, Announcement::NotAbsorbed(path, reason));
     }
 
     if modified_hunks_without_target > 0 {
@@ -594,6 +621,14 @@ enum Announcement<'r> {
     CommitsHiddenByBase(&'r str),
     CommitsHiddenByBranches,
     CouldNotFindRepositoryPath,
+    NotAbsorbed(&'r [u8], NotAbsorbedReason),
+}
+
+/// Why a staged change to a single path was left in the index.
+enum NotAbsorbedReason {
+    Binary,
+    ModeChange,
+    TypeChange,
 }
 
 fn announce(logger: &slog::Logger, announcement: Announcement) {
@@ -686,6 +721,26 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
             logger,
             "Could not determine repository path for rebase. Running in current directory."
         ),
+        Announcement::NotAbsorbed(path, reason) => {
+            let path = String::from_utf8_lossy(path).into_owned();
+            match reason {
+                NotAbsorbedReason::Binary => warn!(
+                    logger,
+                    "Binary file changes cannot be absorbed";
+                    "path" => path,
+                ),
+                NotAbsorbedReason::ModeChange => warn!(
+                    logger,
+                    "File mode changes cannot be absorbed";
+                    "path" => path,
+                ),
+                NotAbsorbedReason::TypeChange => warn!(
+                    logger,
+                    "File type changes cannot be absorbed";
+                    "path" => path,
+                ),
+            }
+        }
     }
 }
 
@@ -2086,6 +2141,184 @@ lines
         let expected_msg = fixed_up_commit.message().unwrap();
         let expected_msg = format!("fixup! {}\n\n{}\n", expected_msg, fixup_message_body);
         assert_eq!(actual_msg, expected_msg);
+    }
+
+    /// Commit `contents` to a new file at `path`.
+    fn commit_new_file<'r>(
+        ctx: &'r repo_utils::Context,
+        path: &str,
+        contents: &str,
+        message: &str,
+    ) -> git2::Commit<'r> {
+        std::fs::write(ctx.join(Path::new(path)), contents).unwrap();
+        add(&ctx.repo, Path::new(path));
+        repo_utils::commit_index(&ctx.repo, message)
+    }
+
+    #[test]
+    fn binary_modification() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        std::fs::write(ctx.join(Path::new("data.bin")), b"\x00\x01\x02\n").unwrap();
+        add(&ctx.repo, Path::new("data.bin"));
+        repo_utils::commit_index(&ctx.repo, "add binary");
+
+        std::fs::write(ctx.join(Path::new("data.bin")), b"\x00\x01\x03\n").unwrap();
+        add(&ctx.repo, Path::new("data.bin"));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "Binary file changes cannot be absorbed",
+                "path": "data.bin",
+            })],
+        );
+    }
+
+    #[test]
+    fn mode_only_change() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        let mut entry = ctx.repo.index().unwrap().get_path(&file_path, 0).unwrap();
+        entry.mode = 0o100755;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 1);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "File mode changes cannot be absorbed",
+                "path": "test-file.txt",
+            })],
+        );
+    }
+
+    #[test]
+    fn mode_change_with_content_change() {
+        let ctx = repo_utils::prepare_and_stage();
+        let file_path = Path::new("test-file.txt");
+        let mut entry = ctx.repo.index().unwrap().get_path(file_path, 0).unwrap();
+        entry.mode = 0o100755;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            one_fixup_per_commit: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        // the content was absorbed, but the mode change is still staged
+        let head_tree = ctx.repo.head().unwrap().peel_to_tree().unwrap();
+        let diff = ctx
+            .repo
+            .diff_tree_to_index(Some(&head_tree), None, None)
+            .unwrap();
+        assert_eq!(diff.deltas().len(), 1);
+        let delta = diff.deltas().next().unwrap();
+        assert_eq!(delta.old_file().id(), delta.new_file().id());
+        assert_eq!(delta.new_file().mode(), git2::FileMode::BlobExecutable);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "File mode changes cannot be absorbed",
+                    "path": "test-file.txt",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn binary_mode_only_change() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        std::fs::write(ctx.join(Path::new("data.bin")), b"\x00\x01\x02\n").unwrap();
+        add(&ctx.repo, Path::new("data.bin"));
+        repo_utils::commit_index(&ctx.repo, "add binary");
+
+        let mut entry = ctx
+            .repo
+            .index()
+            .unwrap()
+            .get_path(Path::new("data.bin"), 0)
+            .unwrap();
+        entry.mode = 0o100755;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "File mode changes cannot be absorbed",
+                "path": "data.bin",
+            })],
+        );
+    }
+
+    #[test]
+    fn type_change_in_stack() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        commit_new_file(&ctx, "link", "not yet a link\n", "add link");
+
+        // replace the file with a symlink
+        let target = ctx.repo.blob(b"test-file.txt").unwrap();
+        let mut entry = ctx
+            .repo
+            .index()
+            .unwrap()
+            .get_path(Path::new("link"), 0)
+            .unwrap();
+        entry.mode = 0o120000;
+        entry.id = target;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+        repo_utils::commit_index(&ctx.repo, "make symlink");
+
+        // retarget the symlink, and change an unrelated file
+        entry.id = ctx.repo.blob(b"other-target").unwrap();
+        repo_utils::stage_entry(&ctx.repo, &entry);
+        repo_utils::stage_file_changes(&ctx, &file_path);
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            one_fixup_per_commit: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo)[..2],
+            ["fixup! Initial commit.\n", "fixup! make symlink\n"]
+        );
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
     }
 
     /// Perform a revwalk from HEAD, extracting the commit messages.

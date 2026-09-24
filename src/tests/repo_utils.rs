@@ -183,10 +183,39 @@ pub fn commit<'repo>(
     .unwrap()
 }
 
+/// Stage a submodule entry at `path`. The commit `id` doesn't need to exist.
+pub fn stage_gitlink<'r>(repo: &'r git2::Repository, path: &str, id: git2::Oid) -> Tree<'r> {
+    let entry = git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: 0o160000,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id,
+        flags: 0,
+        flags_extended: 0,
+        path: path.as_bytes().to_vec(),
+    };
+    stage_entry(repo, &entry)
+}
+
 /// Stage `entry`, replacing any entry at the same path.
 pub fn stage_entry<'r>(repo: &'r git2::Repository, entry: &git2::IndexEntry) -> Tree<'r> {
     let mut index = repo.index().unwrap();
     index.add(entry).unwrap();
+    index.write().unwrap();
+
+    let tree_id = index.write_tree_to(repo).unwrap();
+    repo.find_tree(tree_id).unwrap()
+}
+
+/// Stage the removal of `path`.
+pub fn stage_removal<'r>(repo: &'r git2::Repository, path: &Path) -> Tree<'r> {
+    let mut index = repo.index().unwrap();
+    index.remove_path(path).unwrap();
     index.write().unwrap();
 
     let tree_id = index.write_tree_to(repo).unwrap();
@@ -199,4 +228,14 @@ pub fn commit_index<'r>(repo: &'r git2::Repository, message: &str) -> git2::Comm
     let tree = repo.find_tree(tree_id).unwrap();
     let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
     commit(repo, "HEAD", message, &tree, &[&head_commit])
+}
+
+/// Look up the id of the tree entry at `path` in `commit`'s tree.
+pub fn entry_id(commit: &git2::Commit, path: &str) -> git2::Oid {
+    commit
+        .tree()
+        .unwrap()
+        .get_path(Path::new(path))
+        .unwrap()
+        .id()
 }

@@ -245,4 +245,9 @@ impl Patch {
 
         Ok(ret)
     }
+
+    /// Whether either side of this patch is a submodule commit (gitlink).
+    pub fn is_gitlink(&self) -> bool {
+        self.old_mode == git2::FileMode::Commit || self.new_mode == git2::FileMode::Commit
+    }
 }

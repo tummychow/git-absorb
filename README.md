@@ -93,6 +93,8 @@ Note: `cargo install` does not currently know how to install manpages ([cargo#27
 
 For each hunk in the index, `git absorb` will check if that hunk commutes with the last commit, then the one before that, etc. When it finds a commit that does not commute with the hunk, it infers that this is the right parent commit for this change, and the hunk is turned into a fixup commit. If the hunk commutes with all commits in the range, it means we have not found a suitable parent commit for this change; a warning is displayed, and this hunk remains uncommitted in the index. 
 
+Submodule updates are absorbed into the most recent commit in the range that changed that submodule.
+
 ## Documentation
 
 For additional information about git-absorb, including all arguments and configuration options, see [Documentation/git-absorb.adoc](Documentation/git-absorb.adoc),

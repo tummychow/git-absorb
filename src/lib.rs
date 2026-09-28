@@ -47,8 +47,20 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
             // no matter from what subdirectory we're executing,
             // "." will still refer to the root workdir.
             let pathspec = ["."];
+            // don't stage submodule checkouts, they rarely belong in the stack
+            let workdir = repo.workdir().map(Path::to_path_buf);
+            let mut skip_submodules = |path: &Path, _: &[u8]| -> i32 {
+                match &workdir {
+                    Some(workdir) if workdir.join(path).join(".git").exists() => 1,
+                    _ => 0,
+                }
+            };
             let mut index = repo.index()?;
-            index.add_all(pathspec.iter(), git2::IndexAddOption::DEFAULT, None)?;
+            index.add_all(
+                pathspec.iter(),
+                git2::IndexAddOption::DEFAULT,
+                Some(&mut skip_submodules),
+            )?;
             index.write()?;
 
             if nothing_left_in_index(repo)? {
@@ -72,14 +84,13 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         logger,
     )?;
 
-    let mut diff_options = Some({
-        let mut ret = git2::DiffOptions::new();
-        ret.context_lines(0)
-            .id_abbrev(40)
-            .ignore_filemode(true)
-            .ignore_submodules(true);
-        ret
-    });
+    let mut diff_options = git2::DiffOptions::new();
+    diff_options
+        .context_lines(0)
+        .id_abbrev(40)
+        .ignore_filemode(true)
+        .ignore_submodules(true)
+        .include_typechange(true);
 
     let (stack, summary_counts): (Vec<_>, _) = {
         let mut diffs = Vec::with_capacity(stack.len());
@@ -93,7 +104,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     }
                     .as_ref(),
                     Some(&commit.tree()?),
-                    diff_options.as_mut(),
+                    Some(&mut diff_options),
                 )?,
             )?;
             trace!(logger, "parsed commit diff";
@@ -107,11 +118,18 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         (stack.into_iter().zip(diffs).collect(), summary_counts)
     };
 
+    // unlike the stack diffs, keep file mode changes and submodules
+    let mut index_diff_options = git2::DiffOptions::new();
+    index_diff_options
+        .context_lines(0)
+        .id_abbrev(40)
+        .include_typechange(true);
+
     let mut head_tree = repo.head()?.peel_to_tree()?;
     let index = owned::Diff::new(&repo.diff_tree_to_index(
         Some(&head_tree),
         None,
-        diff_options.as_mut(),
+        Some(&mut index_diff_options),
     )?)?;
     trace!(logger, "parsed index";
            "index" => format!("{:?}", index),
@@ -122,18 +140,56 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         .or_else(|_| git2::Signature::now("nobody", "nobody@example.com"))?;
     let mut head_commit = repo.head()?.peel_to_commit()?;
 
-    let mut hunks_with_commit = vec![];
+    let mut changes_with_commit = vec![];
 
     let mut modified_hunks_without_target = 0usize;
+    let mut gitlinks_without_target = 0usize;
     let mut non_modified_patches = 0usize;
+    let mut not_absorbed = vec![];
     'patch: for index_patch in index.iter() {
         let old_path = index_patch.new_path.as_slice();
+        if index_patch.status == git2::Delta::Typechange {
+            not_absorbed.push((old_path, NotAbsorbedReason::TypeChange));
+            continue 'patch;
+        }
         if index_patch.status != git2::Delta::Modified {
             debug!(logger, "skipped non-modified patch";
                     "path" => String::from_utf8_lossy(old_path).into_owned(),
                     "status" => format!("{:?}", index_patch.status),
             );
             non_modified_patches += 1;
+            continue 'patch;
+        }
+
+        if index_patch.is_gitlink() {
+            // a gitlink has no lines, so it only conflicts with
+            // commits that change it
+            match gitlink_target(repo, &stack, old_path)? {
+                Some(dest_commit) => {
+                    debug!(logger, "found gitlink target";
+                           "path" => String::from_utf8_lossy(old_path).into_owned(),
+                           "commit" => dest_commit.id().to_string(),
+                    );
+                    changes_with_commit.push(ChangeWithCommit {
+                        change: Change::Gitlink(index_patch.new_id),
+                        dest_commit,
+                        index_patch,
+                    });
+                }
+                None => {
+                    not_absorbed.push((old_path, NotAbsorbedReason::GitlinkWithoutTarget));
+                    gitlinks_without_target += 1;
+                }
+            }
+            continue 'patch;
+        }
+
+        if index_patch.old_mode != index_patch.new_mode {
+            // any content hunks are still absorbed; the mode change stays staged
+            not_absorbed.push((old_path, NotAbsorbedReason::ModeChange));
+        }
+        if index_patch.binary && index_patch.old_id != index_patch.new_id {
+            not_absorbed.push((old_path, NotAbsorbedReason::Binary));
             continue 'patch;
         }
 
@@ -226,7 +282,9 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     break 'commit;
                 }
 
-                if next_patch.status == git2::Delta::Added {
+                if next_patch.status == git2::Delta::Added
+                    || next_patch.status == git2::Delta::Typechange
+                {
                     debug!(c_logger, "found noncommutative commit by add");
                     dest_commit = Some(commit);
                     break 'commit;
@@ -266,12 +324,11 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 }
             };
 
-            let hunk_with_commit = HunkWithCommit {
-                hunk_to_apply,
+            changes_with_commit.push(ChangeWithCommit {
+                change: Change::Hunk(hunk_to_apply),
                 dest_commit,
                 index_patch,
-            };
-            hunks_with_commit.push(hunk_with_commit);
+            });
 
             applied_hunks_offset += hunk_offset;
         }
@@ -283,23 +340,22 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         repo.reference("PRE_ABSORB_HEAD", head_commit.id(), true, "")?;
     }
 
-    // * apply all hunks that are going to be fixed up into `dest_commit`
+    // * apply all changes that are going to be fixed up into `dest_commit`
     // * commit the fixup
     // * repeat for all `dest_commit`s
     //
     // the `.zip` here will gives us something similar to `.windows`, but with
     // an extra iteration for the last element (otherwise we would have to
     // special case the last element and commit it separately)
-    for (current, next) in hunks_with_commit
+    for (current, next) in changes_with_commit
         .iter()
-        .zip(hunks_with_commit.iter().skip(1).map(Some).chain([None]))
+        .zip(changes_with_commit.iter().skip(1).map(Some).chain([None]))
     {
-        let new_head_tree = apply_hunk_to_tree(
-            repo,
-            &head_tree,
-            &current.hunk_to_apply,
-            &current.index_patch.old_path,
-        )?;
+        let path = &current.index_patch.old_path;
+        let new_head_tree = match &current.change {
+            Change::Hunk(hunk) => apply_hunk_to_tree(repo, &head_tree, hunk, path)?,
+            Change::Gitlink(id) => apply_gitlink_to_tree(repo, &head_tree, *id, path)?,
+        };
 
         // whether there are no more hunks to apply to `dest_commit`
         let commit_fixup = next.map_or(true, |next| {
@@ -351,7 +407,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                 );
             }
         } else {
-            // we didn't commit anything, but we applied a hunk
+            // we didn't commit anything, but we applied a change
             head_tree = new_head_tree;
         }
     }
@@ -379,9 +435,15 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         announce(logger, Announcement::NonFileModifications);
     }
 
+    for (path, reason) in not_absorbed {
+        announce(logger, Announcement::NotAbsorbed(path, reason));
+    }
+
     if modified_hunks_without_target > 0 {
         announce(logger, Announcement::FileModificationsWithoutTarget);
+    }
 
+    if modified_hunks_without_target > 0 || gitlinks_without_target > 0 {
         match stack_end_reason {
             stack::StackEndReason::ReachedRoot => {
                 announce(logger, Announcement::CannotFixUpPastFirstCommit);
@@ -418,7 +480,7 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         }
     }
 
-    if !hunks_with_commit.is_empty() {
+    if !changes_with_commit.is_empty() {
         use std::process::Command;
         // unwrap() is safe here, as we exit early if the stack is empty
         let last_commit_in_stack = &stack.last().unwrap().0;
@@ -482,18 +544,76 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
     Ok(())
 }
 
-struct HunkWithCommit<'c, 'r, 'p> {
-    hunk_to_apply: owned::Hunk,
+/// A staged change that can be absorbed into a single commit.
+enum Change {
+    /// A hunk of a modified file.
+    Hunk(owned::Hunk),
+    /// A submodule update to the given commit.
+    Gitlink(git2::Oid),
+}
+
+struct ChangeWithCommit<'c, 'r, 'p> {
+    change: Change,
     dest_commit: &'c git2::Commit<'r>,
     index_patch: &'p owned::Patch,
 }
 
-fn apply_hunk_to_tree<'repo>(
+/// Find the newest commit in the stack that changes the tree entry at `path`.
+/// The stack diffs ignore submodules, so this compares trees instead.
+fn gitlink_target<'c, 'r>(
+    repo: &'r git2::Repository,
+    stack: &'c [(git2::Commit<'r>, owned::Diff)],
+    path: &[u8],
+) -> Result<Option<&'c git2::Commit<'r>>> {
+    for (commit, _) in stack {
+        let new_entry = tree_entry_at(repo, &commit.tree()?, path)?;
+        let old_entry = if commit.parent_count() == 0 {
+            None
+        } else {
+            tree_entry_at(repo, &commit.parent(0)?.tree()?, path)?
+        };
+        if new_entry != old_entry {
+            return Ok(Some(commit));
+        }
+    }
+    Ok(None)
+}
+
+/// Look up the id and file mode of the tree entry at `path`.
+/// Unlike `Tree::get_path`, this takes the path as bytes.
+fn tree_entry_at(
+    repo: &git2::Repository,
+    tree: &git2::Tree,
+    path: &[u8],
+) -> Result<Option<(git2::Oid, i32)>> {
+    let mut tree = tree.clone();
+    let mut components = path.split(|&x| x == b'/').peekable();
+    while let Some(name) = components.next() {
+        let (id, mode, kind) = match tree.get_name_bytes(name) {
+            Some(entry) => (entry.id(), entry.filemode(), entry.kind()),
+            None => return Ok(None),
+        };
+        if components.peek().is_none() {
+            return Ok(Some((id, mode)));
+        }
+        if kind != Some(git2::ObjectType::Tree) {
+            return Ok(None);
+        }
+        tree = repo.find_tree(id)?;
+    }
+    Ok(None)
+}
+
+/// Replace the entry at `path` with the id and mode returned by `replace`.
+fn replace_tree_entry<'repo, F>(
     repo: &'repo git2::Repository,
     base: &git2::Tree,
-    hunk: &owned::Hunk,
     path: &[u8],
-) -> Result<git2::Tree<'repo>> {
+    replace: F,
+) -> Result<git2::Tree<'repo>>
+where
+    F: FnOnce(&git2::TreeEntry) -> Result<(git2::Oid, i32)>,
+{
     let mut treebuilder = repo.treebuilder(Some(base))?;
 
     // recurse into nested tree if applicable
@@ -508,19 +628,50 @@ fn apply_hunk_to_tree<'repo>(
             (repo.find_tree(entry.id())?, entry.filemode())
         };
         // TODO: loop instead of recursing to avoid potential stack overflow
-        let result_subtree = apply_hunk_to_tree(repo, &subtree, hunk, rest)?;
+        let result_subtree = replace_tree_entry(repo, &subtree, rest, replace)?;
 
         treebuilder.insert(first, result_subtree.id(), submode)?;
         return Ok(repo.find_tree(treebuilder.write()?)?);
     }
 
-    let (blob, mode) = {
+    let (id, mode) = {
         let entry = treebuilder
             .get(path)?
-            .ok_or_else(|| anyhow!("couldn't find blob entry in tree for path"))?;
-        (repo.find_blob(entry.id())?, entry.filemode())
+            .ok_or_else(|| anyhow!("couldn't find entry in tree for path"))?;
+        replace(&entry)?
     };
+    treebuilder.insert(path, id, mode)?;
+    Ok(repo.find_tree(treebuilder.write()?)?)
+}
 
+fn apply_gitlink_to_tree<'repo>(
+    repo: &'repo git2::Repository,
+    base: &git2::Tree,
+    id: git2::Oid,
+    path: &[u8],
+) -> Result<git2::Tree<'repo>> {
+    replace_tree_entry(repo, base, path, |_| {
+        Ok((id, i32::from(git2::FileMode::Commit)))
+    })
+}
+
+fn apply_hunk_to_tree<'repo>(
+    repo: &'repo git2::Repository,
+    base: &git2::Tree,
+    hunk: &owned::Hunk,
+    path: &[u8],
+) -> Result<git2::Tree<'repo>> {
+    replace_tree_entry(repo, base, path, |entry| {
+        let blob = repo.find_blob(entry.id())?;
+        Ok((write_hunk_to_blob(repo, &blob, hunk)?, entry.filemode()))
+    })
+}
+
+fn write_hunk_to_blob(
+    repo: &git2::Repository,
+    blob: &git2::Blob,
+    hunk: &owned::Hunk,
+) -> Result<git2::Oid> {
     // TODO: convert path to OsStr and pass it during blob_writer
     // creation, to get gitattributes handling (note that converting
     // &[u8] to &std::path::Path is only possible on unixy platforms)
@@ -545,8 +696,7 @@ fn apply_hunk_to_tree<'repo>(
     // finally, write the remaining lines of the old content
     blobwriter.write_all(old_content)?;
 
-    treebuilder.insert(path, blobwriter.commit()?, mode)?;
-    Ok(repo.find_tree(treebuilder.write()?)?)
+    Ok(blobwriter.commit()?)
 }
 
 /// Return slices for lines [1..n] and [n+1; ...]
@@ -594,6 +744,15 @@ enum Announcement<'r> {
     CommitsHiddenByBase(&'r str),
     CommitsHiddenByBranches,
     CouldNotFindRepositoryPath,
+    NotAbsorbed(&'r [u8], NotAbsorbedReason),
+}
+
+/// Why a staged change to a single path was left in the index.
+enum NotAbsorbedReason {
+    Binary,
+    ModeChange,
+    TypeChange,
+    GitlinkWithoutTarget,
 }
 
 fn announce(logger: &slog::Logger, announcement: Announcement) {
@@ -686,6 +845,32 @@ fn announce(logger: &slog::Logger, announcement: Announcement) {
             logger,
             "Could not determine repository path for rebase. Running in current directory."
         ),
+        Announcement::NotAbsorbed(path, reason) => {
+            let path = String::from_utf8_lossy(path).into_owned();
+            match reason {
+                NotAbsorbedReason::Binary => warn!(
+                    logger,
+                    "Binary file changes cannot be absorbed";
+                    "path" => path,
+                ),
+                NotAbsorbedReason::ModeChange => warn!(
+                    logger,
+                    "File mode changes cannot be absorbed";
+                    "path" => path,
+                ),
+                NotAbsorbedReason::TypeChange => warn!(
+                    logger,
+                    "File type changes cannot be absorbed";
+                    "path" => path,
+                ),
+                NotAbsorbedReason::GitlinkWithoutTarget => warn!(
+                    logger,
+                    "Submodule change did not have an available commit to fix up. \
+                        You will have to manually create a fixup commit.";
+                    "path" => path,
+                ),
+            }
+        }
     }
 }
 
@@ -2086,6 +2271,703 @@ lines
         let expected_msg = fixed_up_commit.message().unwrap();
         let expected_msg = format!("fixup! {}\n\n{}\n", expected_msg, fixup_message_body);
         assert_eq!(actual_msg, expected_msg);
+    }
+
+    fn gitlink_oid(digit: char) -> git2::Oid {
+        git2::Oid::from_str(&digit.to_string().repeat(40)).unwrap()
+    }
+
+    /// Commit `contents` to a new file at `path`.
+    fn commit_new_file<'r>(
+        ctx: &'r repo_utils::Context,
+        path: &str,
+        contents: &str,
+        message: &str,
+    ) -> git2::Commit<'r> {
+        std::fs::write(ctx.join(Path::new(path)), contents).unwrap();
+        add(&ctx.repo, Path::new(path));
+        repo_utils::commit_index(&ctx.repo, message)
+    }
+
+    /// Find the commit reachable from HEAD with the given summary.
+    fn find_commit_by_summary<'r>(repo: &'r git2::Repository, summary: &str) -> git2::Commit<'r> {
+        let mut revwalk = repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        revwalk
+            .map(|oid| repo.find_commit(oid.unwrap()).unwrap())
+            .find(|commit| commit.summary() == Some(summary))
+            .unwrap()
+    }
+
+    #[test]
+    fn gitlink_added_in_stack_with_and_rebase() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        repo_utils::set_config_option(&ctx.repo, "core.editor", "true");
+        repo_utils::set_config_option(&ctx.repo, "advice.waitingForEditor", "false");
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        repo_utils::commit_index(&ctx.repo, "add submodule");
+        commit_new_file(&ctx, "other.txt", "other\n", "edit file");
+
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            and_rebase: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec!["edit file", "add submodule", "Initial commit."]
+        );
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        let added = find_commit_by_summary(&ctx.repo, "add submodule");
+        assert_eq!(repo_utils::entry_id(&added, "sub"), gitlink_oid('b'));
+        let initial = find_commit_by_summary(&ctx.repo, "Initial commit.");
+        assert_eq!(
+            repo_utils::entry_id(&added, file_path.to_str().unwrap()),
+            repo_utils::entry_id(&initial, file_path.to_str().unwrap()),
+        );
+        // the later commit still only adds its file
+        let edit = find_commit_by_summary(&ctx.repo, "edit file");
+        let edit_diff = ctx
+            .repo
+            .diff_tree_to_tree(
+                Some(&added.tree().unwrap()),
+                Some(&edit.tree().unwrap()),
+                None,
+            )
+            .unwrap();
+        let edit_paths: Vec<_> = edit_diff
+            .deltas()
+            .map(|delta| delta.new_file().path().unwrap().to_owned())
+            .collect();
+        assert_eq!(edit_paths, vec![PathBuf::from("other.txt")]);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "INFO",
+                "msg": "committed",
+                "fixup": "add submodule",
+                "header": "1 insertion(+), 1 deletion(-)",
+            })],
+        );
+    }
+
+    #[test]
+    fn gitlink_targets_latest_commit_that_changed_it() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        repo_utils::commit_index(&ctx.repo, "pin submodule");
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+        repo_utils::commit_index(&ctx.repo, "bump submodule");
+        commit_new_file(&ctx, "other.txt", "other\n", "unrelated");
+
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('c'));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo)[0],
+            "fixup! bump submodule\n"
+        );
+        let head = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(repo_utils::entry_id(&head, "sub"), gitlink_oid('c'));
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "bump submodule",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn gitlink_in_subdirectory() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        repo_utils::stage_gitlink(&ctx.repo, "libs/sub", gitlink_oid('a'));
+        repo_utils::commit_index(&ctx.repo, "add submodule");
+        // a sibling change rewrites the parent tree but not the gitlink
+        std::fs::create_dir(ctx.join(Path::new("libs"))).unwrap();
+        commit_new_file(&ctx, "libs/other.txt", "other\n", "unrelated");
+
+        repo_utils::stage_gitlink(&ctx.repo, "libs/sub", gitlink_oid('b'));
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo)[0],
+            "fixup! add submodule\n"
+        );
+        let head = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(repo_utils::entry_id(&head, "libs/sub"), gitlink_oid('b'));
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn gitlink_beyond_stack_limit() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        let added = repo_utils::commit_index(&ctx.repo, "add submodule");
+        repo_utils::empty_commit_chain(&ctx.repo, "HEAD", &[&added], config::MAX_STACK);
+
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "Submodule change did not have an available commit to fix up. \
+                           You will have to manually create a fixup commit.",
+                    "path": "sub",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": format!(
+                        "Will not fix up past maximum stack limit. \
+                        Use --base or configure {} to override",
+                        config::MAX_STACK_CONFIG_NAME
+                    ),
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn gitlink_replacing_file_in_stack() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        commit_new_file(&ctx, "sub", "placeholder\n", "add placeholder");
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        repo_utils::commit_index(&ctx.repo, "replace placeholder with submodule");
+
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo)[0],
+            "fixup! replace placeholder with submodule\n"
+        );
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    #[test]
+    fn gitlink_not_changed_in_stack() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        let base = repo_utils::commit_index(&ctx.repo, "add submodule");
+        commit_new_file(&ctx, "other.txt", "other\n", "unrelated");
+
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+
+        let base_id = base.id().to_string();
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            base: Some(&base_id),
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        let mut revwalk = ctx.repo.revwalk().unwrap();
+        revwalk.push_head().unwrap();
+        assert_eq!(revwalk.count(), 3);
+        let index = ctx.repo.index().unwrap();
+        assert_eq!(
+            index.get_path(Path::new("sub"), 0).unwrap().id,
+            gitlink_oid('b')
+        );
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "WARN",
+                    "msg": "Submodule change did not have an available commit to fix up. \
+                           You will have to manually create a fixup commit.",
+                    "path": "sub",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "Will not fix up past specified base commit. \
+                           Consider using --base to specify a different base commit",
+                    "base": base_id,
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn gitlink_and_hunk_with_different_targets() {
+        for dry_run in [true, false] {
+            let (ctx, _) = repo_utils::prepare_repo();
+            repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+            repo_utils::commit_index(&ctx.repo, "add submodule");
+            commit_new_file(&ctx, "other.txt", "other\n", "add other");
+
+            std::fs::write(ctx.join(Path::new("other.txt")), "other\nmore\n").unwrap();
+            add(&ctx.repo, Path::new("other.txt"));
+            repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+
+            let mut capturing_logger = log_utils::CapturingLogger::new();
+            let config = Config {
+                dry_run,
+                ..DEFAULT_CONFIG
+            };
+            run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+            let visible_logs = capturing_logger.visible_logs();
+            if dry_run {
+                assert_eq!(extract_commit_messages(&ctx.repo).len(), 3);
+                assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+                log_utils::assert_log_messages_are(
+                    visible_logs,
+                    vec![
+                        &json!({
+                            "level": "INFO",
+                            "msg": "would have committed",
+                            "fixup": "add other",
+                            "header": "1 insertion(+)",
+                        }),
+                        &json!({
+                            "level": "INFO",
+                            "msg": "would have committed",
+                            "fixup": "add submodule",
+                            "header": "1 insertion(+), 1 deletion(-)",
+                        }),
+                    ],
+                );
+            } else {
+                assert_eq!(
+                    extract_commit_messages(&ctx.repo)[..2],
+                    ["fixup! add submodule\n", "fixup! add other\n"]
+                );
+                assert!(nothing_left_in_index(&ctx.repo).unwrap());
+                let head = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+                assert_eq!(repo_utils::entry_id(&head, "sub"), gitlink_oid('b'));
+                let other_fixup = head.parent(0).unwrap();
+                assert_eq!(repo_utils::entry_id(&other_fixup, "sub"), gitlink_oid('a'));
+            }
+        }
+    }
+
+    #[test]
+    fn gitlink_and_hunk_with_same_target_one_fixup_per_commit() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        std::fs::write(ctx.join(Path::new("other.txt")), "other\n").unwrap();
+        add(&ctx.repo, Path::new("other.txt"));
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        repo_utils::commit_index(&ctx.repo, "add submodule and other");
+
+        std::fs::write(ctx.join(Path::new("other.txt")), "other\nmore\n").unwrap();
+        add(&ctx.repo, Path::new("other.txt"));
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('b'));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            one_fixup_per_commit: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "fixup! add submodule and other\n",
+                "add submodule and other",
+                "Initial commit."
+            ]
+        );
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "add submodule and other",
+                    "header": "2 insertions(+), 1 deletion(-)",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn gitlink_removal() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        repo_utils::stage_gitlink(&ctx.repo, "sub", gitlink_oid('a'));
+        repo_utils::commit_index(&ctx.repo, "add submodule");
+
+        repo_utils::stage_removal(&ctx.repo, Path::new("sub"));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        let index = ctx.repo.index().unwrap();
+        assert!(index.get_path(Path::new("sub"), 0).is_none());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "No changes were in-place file modifications. \
+                       Added, removed, or renamed files cannot be automatically absorbed.",
+            })],
+        );
+    }
+
+    #[test]
+    fn file_replaced_by_gitlink() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        commit_new_file(&ctx, "other.txt", "other\n", "add other");
+
+        repo_utils::stage_gitlink(&ctx.repo, "other.txt", gitlink_oid('a'));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "File type changes cannot be absorbed",
+                "path": "other.txt",
+            })],
+        );
+    }
+
+    #[test]
+    fn binary_modification() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        std::fs::write(ctx.join(Path::new("data.bin")), b"\x00\x01\x02\n").unwrap();
+        add(&ctx.repo, Path::new("data.bin"));
+        repo_utils::commit_index(&ctx.repo, "add binary");
+
+        std::fs::write(ctx.join(Path::new("data.bin")), b"\x00\x01\x03\n").unwrap();
+        add(&ctx.repo, Path::new("data.bin"));
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "Binary file changes cannot be absorbed",
+                "path": "data.bin",
+            })],
+        );
+    }
+
+    #[test]
+    fn mode_only_change() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        let mut entry = ctx.repo.index().unwrap().get_path(&file_path, 0).unwrap();
+        entry.mode = 0o100755;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 1);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "File mode changes cannot be absorbed",
+                "path": "test-file.txt",
+            })],
+        );
+    }
+
+    #[test]
+    fn mode_change_with_content_change() {
+        let ctx = repo_utils::prepare_and_stage();
+        let file_path = Path::new("test-file.txt");
+        let mut entry = ctx.repo.index().unwrap().get_path(file_path, 0).unwrap();
+        entry.mode = 0o100755;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            one_fixup_per_commit: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        // the content was absorbed, but the mode change is still staged
+        let head_tree = ctx.repo.head().unwrap().peel_to_tree().unwrap();
+        let diff = ctx
+            .repo
+            .diff_tree_to_index(Some(&head_tree), None, None)
+            .unwrap();
+        assert_eq!(diff.deltas().len(), 1);
+        let delta = diff.deltas().next().unwrap();
+        assert_eq!(delta.old_file().id(), delta.new_file().id());
+        assert_eq!(delta.new_file().mode(), git2::FileMode::BlobExecutable);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "Initial commit.",
+                }),
+                &json!({
+                    "level": "WARN",
+                    "msg": "File mode changes cannot be absorbed",
+                    "path": "test-file.txt",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn binary_mode_only_change() {
+        let (ctx, _) = repo_utils::prepare_repo();
+        std::fs::write(ctx.join(Path::new("data.bin")), b"\x00\x01\x02\n").unwrap();
+        add(&ctx.repo, Path::new("data.bin"));
+        repo_utils::commit_index(&ctx.repo, "add binary");
+
+        let mut entry = ctx
+            .repo
+            .index()
+            .unwrap()
+            .get_path(Path::new("data.bin"), 0)
+            .unwrap();
+        entry.mode = 0o100755;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&ctx.repo).len(), 2);
+        assert!(!nothing_left_in_index(&ctx.repo).unwrap());
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![&json!({
+                "level": "WARN",
+                "msg": "File mode changes cannot be absorbed",
+                "path": "data.bin",
+            })],
+        );
+    }
+
+    #[test]
+    fn type_change_in_stack() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        commit_new_file(&ctx, "link", "not yet a link\n", "add link");
+
+        // replace the file with a symlink
+        let target = ctx.repo.blob(b"test-file.txt").unwrap();
+        let mut entry = ctx
+            .repo
+            .index()
+            .unwrap()
+            .get_path(Path::new("link"), 0)
+            .unwrap();
+        entry.mode = 0o120000;
+        entry.id = target;
+        repo_utils::stage_entry(&ctx.repo, &entry);
+        repo_utils::commit_index(&ctx.repo, "make symlink");
+
+        // retarget the symlink, and change an unrelated file
+        entry.id = ctx.repo.blob(b"other-target").unwrap();
+        repo_utils::stage_entry(&ctx.repo, &entry);
+        repo_utils::stage_file_changes(&ctx, &file_path);
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            one_fixup_per_commit: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo)[..2],
+            ["fixup! Initial commit.\n", "fixup! make symlink\n"]
+        );
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+    }
+
+    /// Run a git command in `dir`, panicking if it fails.
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.name=nobody",
+                "-c",
+                "user.email=nobody@example.com",
+                "-c",
+                "protocol.file.allow=always",
+                "-c",
+                "init.defaultBranch=master",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    /// Create a repository in `dir`, with a file and a submodule added in separate commits.
+    fn prepare_superproject(dir: &Path) -> PathBuf {
+        let sub_origin = dir.join("sub-origin");
+        let sup = dir.join("super");
+        std::fs::create_dir(&sub_origin).unwrap();
+        std::fs::create_dir(&sup).unwrap();
+
+        git(&sub_origin, &["init"]);
+        git(
+            &sub_origin,
+            &["commit", "--allow-empty", "-m", "sub initial"],
+        );
+
+        git(&sup, &["init"]);
+        git(&sup, &["config", "user.name", "nobody"]);
+        git(&sup, &["config", "user.email", "nobody@example.com"]);
+        std::fs::write(sup.join("file.txt"), "file\n").unwrap();
+        git(&sup, &["add", "file.txt"]);
+        git(&sup, &["commit", "-m", "initial"]);
+        git(
+            &sup,
+            &["submodule", "add", sub_origin.to_str().unwrap(), "sub"],
+        );
+        git(&sup, &["commit", "-m", "add submodule"]);
+        sup
+    }
+
+    #[test]
+    fn autostage_skips_submodule_checkout() {
+        let dir = tempfile::tempdir().unwrap();
+        let sup = prepare_superproject(dir.path());
+        let sub = sup.join("sub");
+        let sub_head = git(&sup, &["rev-parse", "HEAD:sub"]);
+
+        // the submodule checkout moves away from the recorded commit
+        git(&sub, &["commit", "--allow-empty", "-m", "sub update"]);
+        std::fs::write(sup.join("file.txt"), "file\nmore\n").unwrap();
+
+        let repo = git2::Repository::open(&sup).unwrap();
+        repo_utils::set_config_flag(&repo, config::AUTO_STAGE_IF_NOTHING_STAGED_CONFIG_NAME);
+
+        let mut capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &repo).unwrap();
+
+        assert_eq!(extract_commit_messages(&repo)[0], "fixup! initial\n");
+        assert_eq!(git(&sup, &["rev-parse", "HEAD:sub"]), sub_head);
+
+        log_utils::assert_log_messages_are(
+            capturing_logger.visible_logs(),
+            vec![
+                &json!({
+                    "level": "INFO",
+                    "msg": "committed",
+                    "fixup": "initial",
+                }),
+                &json!({
+                    "level": "INFO",
+                    "msg": "To squash the new commits, rebase:",
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn submodule_end_to_end_with_and_rebase() {
+        let dir = tempfile::tempdir().unwrap();
+        let sup = prepare_superproject(dir.path());
+        std::fs::write(sup.join("file.txt"), "file\nmore\n").unwrap();
+        git(&sup, &["commit", "-am", "edit file"]);
+
+        let sub = sup.join("sub");
+        git(&sub, &["commit", "--allow-empty", "-m", "sub update"]);
+        let new_sub_head = git(&sub, &["rev-parse", "HEAD"]).trim().to_string();
+        git(&sup, &["add", "sub"]);
+
+        let repo = git2::Repository::open(&sup).unwrap();
+        repo_utils::set_config_option(&repo, "core.editor", "true");
+        repo_utils::set_config_option(&repo, "advice.waitingForEditor", "false");
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        let config = Config {
+            and_rebase: true,
+            ..DEFAULT_CONFIG
+        };
+        run_with_repo(&capturing_logger.logger, &config, &repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&repo),
+            vec!["edit file\n", "add submodule\n", "initial\n"]
+        );
+        assert_eq!(git(&sup, &["status", "--porcelain"]), "");
+
+        let log = git(
+            &sup,
+            &[
+                "log",
+                "-p",
+                "--submodule=short",
+                "--format=%s",
+                "-1",
+                "HEAD~1",
+            ],
+        );
+        assert!(log.starts_with("add submodule\n"), "{}", log);
+        assert!(
+            log.contains(&format!("+Subproject commit {}", new_sub_head)),
+            "{}",
+            log
+        );
+        let log = git(&sup, &["log", "-p", "--submodule=short", "-1", "HEAD"]);
+        assert!(!log.contains("Subproject commit"), "{}", log);
     }
 
     /// Perform a revwalk from HEAD, extracting the commit messages.

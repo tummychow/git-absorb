@@ -205,6 +205,11 @@ pub struct Patch {
     pub old_path: Vec<u8>,
     pub new_path: Vec<u8>,
     pub status: git2::Delta,
+    pub old_mode: git2::FileMode,
+    pub new_mode: git2::FileMode,
+    pub old_id: git2::Oid,
+    pub new_id: git2::Oid,
+    pub binary: bool,
     pub hunks: Vec<Hunk>,
 }
 impl Patch {
@@ -223,6 +228,11 @@ impl Patch {
                 .map(Vec::from)
                 .ok_or_else(|| anyhow!("delta with empty new path"))?,
             status: patch.delta().status(),
+            old_mode: patch.delta().old_file().mode(),
+            new_mode: patch.delta().new_file().mode(),
+            old_id: patch.delta().old_file().id(),
+            new_id: patch.delta().new_file().id(),
+            binary: patch.delta().flags().is_binary(),
             hunks: Vec::with_capacity(patch.num_hunks()),
         };
         if patch.delta().nfiles() < 1 || patch.delta().nfiles() > 2 {
@@ -234,5 +244,10 @@ impl Patch {
         }
 
         Ok(ret)
+    }
+
+    /// Whether either side of this patch is a submodule commit (gitlink).
+    pub fn is_gitlink(&self) -> bool {
+        self.old_mode == git2::FileMode::Commit || self.new_mode == git2::FileMode::Commit
     }
 }

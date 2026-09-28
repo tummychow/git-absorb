@@ -141,6 +141,12 @@ state. (You can also find the commit in question with `git reflog`.) And
 if you think `git absorb` is at fault, please
 https://github.com/tummychow/git-absorb/issues/new[file an issue].
 
+SUBMODULES
+----------
+
+A staged submodule update is absorbed into the most recent commit in the
+stack that changed that submodule. Submodules are never auto-staged.
+
 CONFIGURATION
 -------------
 

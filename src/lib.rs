@@ -77,7 +77,9 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
         ret.context_lines(0)
             .id_abbrev(40)
             .ignore_filemode(true)
-            .ignore_submodules(true);
+            .ignore_submodules(true)
+            // otherwise libgit2 reports a typechange as a deletion plus an addition of the same path
+            .include_typechange(true);
         ret
     });
 
@@ -226,7 +228,10 @@ fn run_with_repo(logger: &slog::Logger, config: &Config, repo: &git2::Repository
                     break 'commit;
                 }
 
-                if next_patch.status == git2::Delta::Added {
+                if matches!(
+                    next_patch.status,
+                    git2::Delta::Added | git2::Delta::Typechange
+                ) {
                     debug!(c_logger, "found noncommutative commit by add");
                     dest_commit = Some(commit);
                     break 'commit;
@@ -726,7 +731,7 @@ fn format_change_header(diff: &DiffStats) -> String {
 mod tests {
     use git2::message_trailers_strs;
     use serde_json::json;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tests::repo_utils::add;
 
     use super::*;
@@ -2086,6 +2091,98 @@ lines
         let expected_msg = fixed_up_commit.message().unwrap();
         let expected_msg = format!("fixup! {}\n\n{}\n", expected_msg, fixup_message_body);
         assert_eq!(actual_msg, expected_msg);
+    }
+
+    /// Commit a symlink at `link_path`, then replace it with a regular file.
+    fn prepare_repo_with_typechange() -> (repo_utils::Context, PathBuf, PathBuf) {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        let link_path = PathBuf::from("link");
+        commit_symlink(&ctx, &link_path, &file_path);
+
+        std::fs::write(ctx.join(&link_path), "no longer a link\n").unwrap();
+        {
+            let tree = add(&ctx.repo, &link_path);
+            let head = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+            repo_utils::commit(
+                &ctx.repo,
+                "HEAD",
+                "Replace link with file.",
+                &tree,
+                &[&head],
+            );
+        }
+
+        (ctx, file_path, link_path)
+    }
+
+    fn commit_symlink(ctx: &repo_utils::Context, link_path: &Path, target: &Path) {
+        let tree = repo_utils::add_symlink(&ctx.repo, link_path, target);
+        let head = ctx.repo.head().unwrap().peel_to_commit().unwrap();
+        repo_utils::commit(&ctx.repo, "HEAD", "Add link.", &tree, &[&head]);
+    }
+
+    #[test]
+    fn typechange_in_stack_does_not_prevent_absorbing_other_files() {
+        let (ctx, file_path, _) = prepare_repo_with_typechange();
+        repo_utils::stage_file_changes(&ctx, &file_path);
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "fixup! Initial commit.\n",
+                "fixup! Initial commit.\n",
+                "Replace link with file.",
+                "Add link.",
+                "Initial commit.",
+            ]
+        );
+    }
+
+    #[test]
+    fn absorb_into_typechange_commit() {
+        let (ctx, _, link_path) = prepare_repo_with_typechange();
+        std::fs::write(ctx.join(&link_path), "no longer a link\nat all\n").unwrap();
+        add(&ctx.repo, &link_path);
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert!(nothing_left_in_index(&ctx.repo).unwrap());
+        assert_eq!(
+            extract_commit_messages(&ctx.repo)[0],
+            "fixup! Replace link with file.\n"
+        );
+    }
+
+    #[test]
+    fn staged_typechange_does_not_prevent_absorbing_other_files() {
+        let (ctx, file_path) = repo_utils::prepare_repo();
+        let link_path = PathBuf::from("link");
+        commit_symlink(&ctx, &link_path, &file_path);
+
+        std::fs::write(ctx.join(&link_path), "no longer a link\n").unwrap();
+        add(&ctx.repo, &link_path);
+        repo_utils::stage_file_changes(&ctx, &file_path);
+
+        let capturing_logger = log_utils::CapturingLogger::new();
+        run_with_repo(&capturing_logger.logger, &DEFAULT_CONFIG, &ctx.repo).unwrap();
+
+        assert_eq!(
+            extract_commit_messages(&ctx.repo),
+            vec![
+                "fixup! Initial commit.\n",
+                "fixup! Initial commit.\n",
+                "Add link.",
+                "Initial commit.",
+            ]
+        );
+        let index = ctx.repo.index().unwrap();
+        let entry = index.get_path(&link_path, 0).unwrap();
+        assert_eq!(entry.mode, 0o100644, "typechange should remain staged");
     }
 
     /// Perform a revwalk from HEAD, extracting the commit messages.

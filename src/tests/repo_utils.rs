@@ -54,6 +54,32 @@ pub fn add<'r>(repo: &'r git2::Repository, path: &Path) -> git2::Tree<'r> {
     repo.find_tree(tree_id).unwrap()
 }
 
+/// Stage a symlink at `path` pointing to `target`, without touching the working tree.
+pub fn add_symlink<'r>(repo: &'r git2::Repository, path: &Path, target: &Path) -> git2::Tree<'r> {
+    let mut index = repo.index().unwrap();
+    let entry = git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: 0o120000,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id: git2::Oid::zero(),
+        flags: 0,
+        flags_extended: 0,
+        path: path.as_os_str().as_encoded_bytes().to_vec(),
+    };
+    index
+        .add_frombuffer(&entry, target.as_os_str().as_encoded_bytes())
+        .unwrap();
+    index.write().unwrap();
+
+    let tree_id = index.write_tree_to(repo).unwrap();
+    repo.find_tree(tree_id).unwrap()
+}
+
 /// Prepare an empty repo, and stage some changes.
 pub fn prepare_and_stage() -> Context {
     let (ctx, file_path) = prepare_repo();
